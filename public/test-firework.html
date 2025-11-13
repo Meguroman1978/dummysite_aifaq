@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firework AIFAQ テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firework AIFAQ 動作テスト</h1>
+        
+        <div class="info">
+            <p><strong>このページの目的:</strong></p>
+            <p>Firework AIFAQウィジェットが正しく読み込まれ、動作するかをテストします。</p>
+            <p>ページが読み込まれた後、右下または指定位置にウィジェットが表示されるはずです。</p>
+        </div>
+
+        <div class="test-section">
+            <h2>テストセクション1</h2>
+            <p>このセクションの後にFirework AIFAQスクリプトを配置しています。</p>
+            <p>ウィジェットが表示されているか確認してください。</p>
+        </div>
+
+        <!-- Firework AIFAQ スクリプトを埋め込む位置 -->
+        <script async type="text/javascript" src="https://asset.fwscripts.com/js/ava.js?business_id=g201J5"></script>
+        <fw-ava
+            domain_assistant_id="e5xrbg"
+            layout="faq"
+        ></fw-ava>
+
+        <div class="test-section">
+            <h2>テストセクション2</h2>
+            <p>スクリプトは上記に配置されています。</p>
+        </div>
+
+        <div class="info">
+            <p><strong>確認ポイント:</strong></p>
+            <ul>
+                <li>ブラウザのコンソールにエラーが出ていないか</li>
+                <li>ネットワークタブで asset.fwscripts.com へのリクエストが成功しているか</li>
+                <li>ウィジェット（チャットアイコンやFAQパネル）が表示されているか</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // デバッグ用：スクリプト読み込み状況を確認
+        window.addEventListener('load', function() {
+            console.log('Page loaded');
+            console.log('Looking for fw-ava element:', document.querySelector('fw-ava'));
+            
+            // 5秒後に再確認
+            setTimeout(function() {
+                console.log('After 5 seconds - fw-ava element:', document.querySelector('fw-ava'));
+                const fwAva = document.querySelector('fw-ava');
+                if (fwAva) {
+                    console.log('fw-ava attributes:', {
+                        domain_assistant_id: fwAva.getAttribute('domain_assistant_id'),
+                        layout: fwAva.getAttribute('layout')
+                    });
+                }
+            }, 5000);
+        });
+    </script>
+</body>
+</html>

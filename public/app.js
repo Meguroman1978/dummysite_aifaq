@@ -209,7 +209,7 @@ function handlePreviewClick(e) {
     const clickedElement = e.target;
     
     // 確認ダイアログ
-    const confirmed = confirm('この位置にFreshworksスクリプトを埋め込みますか？');
+    const confirmed = confirm('この位置にFirework AIFAQスクリプトを埋め込みますか？');
     
     if (confirmed) {
         injectScript(clickedElement);
@@ -239,6 +239,15 @@ function injectScript(element) {
         if (element.parentNode) {
             element.parentNode.insertBefore(scriptTag, element.nextSibling);
             element.parentNode.insertBefore(fwAvaElement, scriptTag.nextSibling);
+            
+            // デバッグ：挿入されたことを確認
+            console.log('✅ Firework AIFAQ script injected');
+            console.log('Script URL:', scriptTag.src);
+            console.log('fw-ava element:', fwAvaElement);
+            console.log('Attributes:', {
+                domain_assistant_id: fwAvaElement.getAttribute('domain_assistant_id'),
+                layout: fwAvaElement.getAttribute('layout')
+            });
         }
         
         // クリーンアップ：埋め込み用のスタイルとクラスを削除
@@ -247,6 +256,14 @@ function injectScript(element) {
         // 更新されたHTMLを取得
         currentHtml = '<!DOCTYPE html>\n' + iframeDoc.documentElement.outerHTML;
         isScriptInjected = true;
+        
+        // デバッグ：HTMLの一部を確認
+        console.log('HTML snippet around fw-ava:', 
+            currentHtml.substring(
+                currentHtml.indexOf('<fw-ava') - 100, 
+                currentHtml.indexOf('</fw-ava>') + 100
+            )
+        );
         
         // 成功画面を表示
         showSuccess(script);
