@@ -248,6 +248,21 @@ websiteForm.addEventListener('submit', async (e) => {
             console.log(`✅ ウェブサイト取得成功`);
             console.log(`📊 統計: ${data.stats.totalImages}個の画像を検出`);
             
+            // 代替方法を使用した場合の通知
+            if (data.fetchMethod && data.fetchMethod !== 'standard') {
+                console.log(`🔄 代替方法で取得: ${data.fetchMethod}`);
+            }
+            
+            // 警告がある場合は表示
+            if (data.warning) {
+                console.warn('⚠️ ' + data.warning);
+            }
+            
+            // メッセージがある場合は表示
+            if (data.message) {
+                console.log('💬 ' + data.message);
+            }
+            
             originalHtml = data.html;
             currentHtml = data.html;
             isScriptInjected = false;
@@ -272,10 +287,21 @@ websiteForm.addEventListener('submit', async (e) => {
             
             showPreview();
         } else {
+            let errorDetails = '';
+            if (data.code) {
+                errorDetails += `エラーコード: ${data.code}\n`;
+            }
+            if (data.details) {
+                errorDetails += `詳細: ${data.details}\n`;
+            }
+            if (data.suggestion) {
+                errorDetails += `\n💡 提案:\n${data.suggestion}`;
+            }
+            
             showError(
                 'ウェブサイト取得エラー',
                 data.error || 'ウェブサイトの取得に失敗しました',
-                data.code ? `エラーコード: ${data.code}\n詳細: ${data.details || ''}` : null
+                errorDetails || null
             );
         }
     } catch (error) {
