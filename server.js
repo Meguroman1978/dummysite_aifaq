@@ -187,34 +187,94 @@ app.post('/api/fetch-website', async (req, res) => {
       }
     });
 
-    // 画像の処理
+    // 高度な画像抽出機能
     const imageUrls = [];
+    const imageMap = new Map(); // 重複を避けるため
+    
+    // ヘルパー関数：URLを絶対パスに変換
+    function toAbsoluteUrl(url) {
+      if (!url || url.startsWith('data:')) return null;
+      
+      if (url.startsWith('//')) {
+        return targetUrl.protocol + url;
+      } else if (url.startsWith('http')) {
+        return url;
+      } else {
+        try {
+          return new URL(url, baseUrl).href;
+        } catch (e) {
+          console.warn(`Failed to convert URL: ${url}`);
+          return null;
+        }
+      }
+    }
+    
+    // 1. <img>タグから画像を抽出（複数の属性をチェック）
     $('img').each((i, elem) => {
-      const src = $(elem).attr('src');
-      const dataSrc = $(elem).attr('data-src'); // lazy loading対応
+      const possibleSources = [
+        $(elem).attr('src'),
+        $(elem).attr('data-src'),
+        $(elem).attr('data-lazy-src'),
+        $(elem).attr('data-original'),
+        $(elem).attr('data-srcset')?.split(',')[0]?.trim().split(' ')[0], // srcsetの最初の画像
+        $(elem).attr('srcset')?.split(',')[0]?.trim().split(' ')[0]
+      ];
       
-      let imageUrl = src || dataSrc;
-      
-      if (imageUrl && !imageUrl.startsWith('data:')) {
-        if (!imageUrl.startsWith('http') && !imageUrl.startsWith('//')) {
-          try {
-            imageUrl = new URL(imageUrl, baseUrl).href;
-          } catch (e) {
-            console.warn(`Failed to convert image src: ${imageUrl}`);
+      // 最初に見つかった有効なURLを使用
+      for (const source of possibleSources) {
+        const imageUrl = toAbsoluteUrl(source);
+        if (imageUrl) {
+          $(elem).attr('src', imageUrl);
+          $(elem).attr('data-original-src', imageUrl);
+          
+          if (proxyImages && !imageMap.has(imageUrl)) {
+            imageMap.set(imageUrl, true);
+            imageUrls.push(imageUrl);
+          }
+          break;
+        }
+      }
+    });
+    
+    // 2. <picture>要素内の<source>タグから画像を抽出
+    $('picture source').each((i, elem) => {
+      const srcset = $(elem).attr('srcset');
+      if (srcset) {
+        const imageUrl = toAbsoluteUrl(srcset.split(',')[0].trim().split(' ')[0]);
+        if (imageUrl) {
+          $(elem).attr('srcset', imageUrl);
+          if (proxyImages && !imageMap.has(imageUrl)) {
+            imageMap.set(imageUrl, true);
+            imageUrls.push(imageUrl);
           }
         }
-        
-        // //で始まるURLを処理
-        if (imageUrl.startsWith('//')) {
-          imageUrl = targetUrl.protocol + imageUrl;
+      }
+    });
+    
+    // 3. CSS background-imageから画像を抽出
+    $('[style]').each((i, elem) => {
+      const style = $(elem).attr('style');
+      if (style && style.includes('background-image')) {
+        const urlMatch = style.match(/url\(['"]?([^'")\s]+)['"]?\)/);
+        if (urlMatch && urlMatch[1]) {
+          const imageUrl = toAbsoluteUrl(urlMatch[1]);
+          if (imageUrl && proxyImages && !imageMap.has(imageUrl)) {
+            imageMap.set(imageUrl, true);
+            imageUrls.push(imageUrl);
+          }
         }
-        
-        $(elem).attr('src', imageUrl);
-        $(elem).attr('data-original-src', imageUrl); // オリジナルURLを保存
-        
-        if (proxyImages) {
-          imageUrls.push(imageUrl);
-        }
+      }
+    });
+    
+    // 4. data-background属性から画像を抽出
+    $('[data-background], [data-bg], [data-background-image]').each((i, elem) => {
+      const bgUrl = $(elem).attr('data-background') || 
+                    $(elem).attr('data-bg') || 
+                    $(elem).attr('data-background-image');
+      const imageUrl = toAbsoluteUrl(bgUrl);
+      if (imageUrl && proxyImages && !imageMap.has(imageUrl)) {
+        imageMap.set(imageUrl, true);
+        imageUrls.push(imageUrl);
       }
     });
 

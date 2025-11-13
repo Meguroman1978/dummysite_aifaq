@@ -103,21 +103,49 @@ aifaqUrlInput.addEventListener('input', (e) => {
 async function proxyImages(html) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    const images = doc.querySelectorAll('img[data-original-src]');
     
-    if (images.length === 0) {
+    // 複数のソースから画像URLを収集
+    const imageElements = [];
+    const imageUrls = new Set(); // 重複を避ける
+    
+    // 1. img タグから
+    doc.querySelectorAll('img[data-original-src]').forEach(img => {
+        const url = img.getAttribute('data-original-src');
+        if (url && !imageUrls.has(url)) {
+            imageUrls.add(url);
+            imageElements.push({ element: img, url: url, type: 'img' });
+        }
+    });
+    
+    // 2. background-image from style attributes
+    doc.querySelectorAll('[style*="background-image"]').forEach(elem => {
+        const style = elem.getAttribute('style');
+        const urlMatch = style.match(/url\(['"]?([^'")\s]+)['"]?\)/);
+        if (urlMatch && urlMatch[1] && !urlMatch[1].startsWith('data:')) {
+            const url = urlMatch[1];
+            if (!imageUrls.has(url)) {
+                imageUrls.add(url);
+                imageElements.push({ element: elem, url: url, type: 'background', originalStyle: style });
+            }
+        }
+    });
+    
+    // 3. picture source elements
+    doc.querySelectorAll('picture source[srcset]').forEach(source => {
+        const srcset = source.getAttribute('srcset');
+        const url = srcset.split(',')[0].trim().split(' ')[0];
+        if (url && !url.startsWith('data:') && !imageUrls.has(url)) {
+            imageUrls.add(url);
+            imageElements.push({ element: source, url: url, type: 'srcset' });
+        }
+    });
+    
+    if (imageElements.length === 0) {
         console.log('No images to proxy');
         return html;
     }
     
-    console.log(`🖼️ Proxying ${images.length} images...`);
-    
-    // 画像URLを収集
-    const imageUrls = Array.from(images).map(img => img.getAttribute('data-original-src')).filter(Boolean);
-    
-    if (imageUrls.length === 0) {
-        return html;
-    }
+    console.log(`🖼️ Proxying ${imageElements.length} images...`);
     
     try {
         // サーバー経由で画像を一括取得
@@ -126,7 +154,7 @@ async function proxyImages(html) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ urls: imageUrls })
+            body: JSON.stringify({ urls: Array.from(imageUrls) })
         });
         
         const data = await response.json();
@@ -134,20 +162,37 @@ async function proxyImages(html) {
         if (data.success) {
             console.log(`✅ 画像取得完了: ${data.successful}/${data.total} 成功`);
             
+            // URLとdataUrlのマップを作成
+            const urlToDataUrl = new Map();
+            data.results.forEach(result => {
+                if (result.success) {
+                    urlToDataUrl.set(result.url, result.dataUrl);
+                }
+            });
+            
             // 成功した画像をBase64データURLに置き換え
-            data.results.forEach((result, index) => {
-                if (result.success && images[index]) {
-                    images[index].setAttribute('src', result.dataUrl);
-                    images[index].removeAttribute('data-original-src');
-                } else if (!result.success) {
-                    console.warn(`画像取得失敗: ${result.url} - ${result.error}`);
+            imageElements.forEach(item => {
+                const dataUrl = urlToDataUrl.get(item.url);
+                if (dataUrl) {
+                    if (item.type === 'img') {
+                        item.element.setAttribute('src', dataUrl);
+                        item.element.removeAttribute('data-original-src');
+                    } else if (item.type === 'background') {
+                        const newStyle = item.originalStyle.replace(
+                            /url\(['"]?[^'")\s]+['"]?\)/, 
+                            `url('${dataUrl}')`
+                        );
+                        item.element.setAttribute('style', newStyle);
+                    } else if (item.type === 'srcset') {
+                        item.element.setAttribute('srcset', dataUrl);
+                    }
+                } else {
+                    console.warn(`画像取得失敗: ${item.url}`);
                 }
             });
             
             if (data.failed > 0) {
-                showSuccess('画像取得完了（一部失敗）', `${data.successful}/${data.total}個の画像を取得しました。${data.failed}個は失敗しました。`);
-            } else {
-                showSuccess('画像取得完了', `${data.successful}個の画像を取得しました。`);
+                console.warn(`⚠️ ${data.failed}個の画像取得に失敗しました`);
             }
             
             return doc.documentElement.outerHTML;
