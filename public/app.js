@@ -1,8 +1,10 @@
 // グローバル変数
 let currentHtml = '';
+let originalHtml = '';
 let domainAssistantId = '';
 let businessId = '';
 let websiteUrl = '';
+let isScriptInjected = false;
 
 // DOM要素
 const inputSection = document.getElementById('input-section');
@@ -24,7 +26,7 @@ const websitePreview = document.getElementById('website-preview');
 function extractIdsFromAifaqUrl(url) {
     try {
         // URLパターン: https://business.firework.com/business/{business_id}/ava/{domain_assistant_id}
-        const regex = /\/business\/([^\/]+)\/ava\/([^\/\?#]+)/;
+        const regex = /\/business\/([^\/]+)\/ava\/([^\/?#]+)/;
         const match = url.match(regex);
         
         if (match && match.length >= 3) {
@@ -98,7 +100,9 @@ websiteForm.addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
+            originalHtml = data.html;
             currentHtml = data.html;
+            isScriptInjected = false;
             showPreview();
         } else {
             alert('エラー: ' + (data.error || 'ウェブサイトの取得に失敗しました'));
@@ -118,6 +122,9 @@ websiteForm.addEventListener('submit', async (e) => {
 function showPreview() {
     inputSection.style.display = 'none';
     previewSection.style.display = 'block';
+    
+    // ツールバーを更新
+    document.querySelector('.toolbar h2').textContent = 'スクリプト埋め込み位置を選択';
     
     // iframeにHTMLを読み込み、クリックイベントを設定
     setupPreviewFrame();
@@ -151,7 +158,7 @@ function setupPreviewFrame() {
 function addClickableOverlay(html) {
     // スタイルを追加してクリック可能な要素をハイライト
     const style = `
-        <style>
+        <style id="fw-injection-styles">
             .fw-injection-mode * {
                 cursor: pointer !important;
                 transition: outline 0.2s !important;
@@ -213,21 +220,33 @@ function handlePreviewClick(e) {
 function injectScript(element) {
     const script = generateFreshworksScript();
     
-    // 要素の後にスクリプトを挿入
-    const scriptElement = document.createElement('div');
-    scriptElement.innerHTML = script;
-    
     try {
         // iframe内のドキュメントを取得
         const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
         
+        // スクリプトタグを作成
+        const scriptTag = iframeDoc.createElement('script');
+        scriptTag.async = true;
+        scriptTag.type = 'text/javascript';
+        scriptTag.src = `https://asset.fwscripts.com/js/ava.js?business_id=${businessId}`;
+        
+        // fw-ava要素を作成
+        const fwAvaElement = iframeDoc.createElement('fw-ava');
+        fwAvaElement.setAttribute('domain_assistant_id', domainAssistantId);
+        fwAvaElement.setAttribute('layout', 'faq');
+        
         // クリックされた要素の後にスクリプトを挿入
         if (element.parentNode) {
-            element.parentNode.insertBefore(scriptElement, element.nextSibling);
+            element.parentNode.insertBefore(scriptTag, element.nextSibling);
+            element.parentNode.insertBefore(fwAvaElement, scriptTag.nextSibling);
         }
         
+        // クリーンアップ：埋め込み用のスタイルとクラスを削除
+        cleanupInjectionMode(iframeDoc);
+        
         // 更新されたHTMLを取得
-        currentHtml = iframeDoc.documentElement.outerHTML;
+        currentHtml = '<!DOCTYPE html>\n' + iframeDoc.documentElement.outerHTML;
+        isScriptInjected = true;
         
         // 成功画面を表示
         showSuccess(script);
@@ -237,10 +256,30 @@ function injectScript(element) {
     }
 }
 
-// Freshworksスクリプトを生成
+// 埋め込みモードのクリーンアップ
+function cleanupInjectionMode(doc) {
+    // 埋め込み用スタイルを削除
+    const injectionStyles = doc.getElementById('fw-injection-styles');
+    if (injectionStyles) {
+        injectionStyles.remove();
+    }
+    
+    // bodyからクラスを削除
+    const body = doc.querySelector('body');
+    if (body) {
+        body.classList.remove('fw-injection-mode');
+    }
+    
+    // すべての要素からクラスを削除
+    const elements = doc.querySelectorAll('.fw-injection-candidate');
+    elements.forEach(el => {
+        el.classList.remove('fw-injection-candidate');
+    });
+}
+
+// Freshworksスクリプトを生成（表示用）
 function generateFreshworksScript() {
-    return `
-<script async type="text/javascript" src="https://asset.fwscripts.com/js/ava.js?business_id=${businessId}"></script>
+    return `<script async type="text/javascript" src="https://asset.fwscripts.com/js/ava.js?business_id=${businessId}"></script>
 <fw-ava
     domain_assistant_id="${domainAssistantId}"
     layout="faq"
@@ -274,11 +313,11 @@ function showFinalPreview() {
     successSection.style.display = 'none';
     previewSection.style.display = 'block';
     
-    // クリックイベントを無効化して最終プレビューを表示
+    // クリーンアップされたHTMLをプレビュー
     websitePreview.srcdoc = currentHtml;
     
     // ツールバーを更新
-    document.querySelector('.toolbar h2').textContent = '最終プレビュー';
+    document.querySelector('.toolbar h2').textContent = '最終プレビュー（Freshworksスクリプト埋め込み済み）';
     
     // 戻るボタンで成功画面に戻る
     backBtn.onclick = () => {
@@ -289,29 +328,52 @@ function showFinalPreview() {
 
 // HTMLをダウンロード
 function downloadHtml() {
-    const blob = new Blob([currentHtml], { type: 'text/html' });
+    // ダウンロードするHTMLを決定
+    let htmlToDownload = currentHtml;
+    
+    // スクリプトが埋め込まれていない場合は警告
+    if (!isScriptInjected) {
+        if (!confirm('まだスクリプトが埋め込まれていません。\n埋め込み前のHTMLをダウンロードしますか？')) {
+            return;
+        }
+    }
+    
+    const blob = new Blob([htmlToDownload], { type: 'text/html; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `modified-website-${Date.now()}.html`;
+    
+    // ファイル名を生成
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    const filename = isScriptInjected 
+        ? `website-with-freshworks-${timestamp}.html`
+        : `website-copy-${timestamp}.html`;
+    
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert('HTMLファイルがダウンロードされました！');
+    alert(`HTMLファイル「${filename}」がダウンロードされました！`);
 }
 
 // 戻るボタン
 backBtn.addEventListener('click', () => {
-    previewSection.style.display = 'none';
-    inputSection.style.display = 'block';
+    if (isScriptInjected) {
+        if (confirm('埋め込んだスクリプトがリセットされます。よろしいですか？')) {
+            currentHtml = originalHtml;
+            isScriptInjected = false;
+            previewSection.style.display = 'none';
+            inputSection.style.display = 'block';
+        }
+    } else {
+        previewSection.style.display = 'none';
+        inputSection.style.display = 'block';
+    }
 });
 
 // ダウンロードボタン
 downloadBtn.addEventListener('click', () => {
-    // プレビュー中でもダウンロード可能
-    if (confirm('現在の状態でHTMLをダウンロードしますか？\n（スクリプト埋め込み前の状態です）')) {
-        downloadHtml();
-    }
+    downloadHtml();
 });
