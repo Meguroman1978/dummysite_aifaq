@@ -22,6 +22,33 @@ const backBtn = document.getElementById('back-btn');
 const downloadBtn = document.getElementById('download-btn');
 const websitePreview = document.getElementById('website-preview');
 
+// エラー表示用の関数
+function showError(title, message, details = null) {
+    let errorHtml = `
+        <div style="background: #fee; border-left: 4px solid #f44; padding: 20px; border-radius: 8px; margin: 20px;">
+            <h3 style="color: #c00; margin-top: 0;">❌ ${title}</h3>
+            <p style="color: #333; margin: 10px 0;">${message}</p>
+    `;
+    
+    if (details) {
+        errorHtml += `
+            <details style="margin-top: 10px;">
+                <summary style="cursor: pointer; color: #666;">詳細を表示</summary>
+                <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${details}</pre>
+            </details>
+        `;
+    }
+    
+    errorHtml += `</div>`;
+    
+    alert(`${title}\n\n${message}${details ? '\n\n' + details : ''}`);
+}
+
+// 成功メッセージ表示
+function showSuccess(title, message) {
+    console.log(`✅ ${title}: ${message}`);
+}
+
 // AIFAQ URLからIDを抽出する関数
 function extractIdsFromAifaqUrl(url) {
     try {
@@ -56,6 +83,8 @@ aifaqUrlInput.addEventListener('input', (e) => {
             // 入力欄の色を変更して抽出成功を示す
             businessIdInput.style.backgroundColor = '#e6fffa';
             domainAssistantIdInput.style.backgroundColor = '#e6fffa';
+            
+            showSuccess('ID抽出成功', `Business ID: ${ids.businessId}, Domain Assistant ID: ${ids.domainAssistantId}`);
         } else {
             businessIdInput.value = '';
             domainAssistantIdInput.value = '';
@@ -70,6 +99,68 @@ aifaqUrlInput.addEventListener('input', (e) => {
     }
 });
 
+// 画像をプロキシ経由で取得してBase64に変換
+async function proxyImages(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const images = doc.querySelectorAll('img[data-original-src]');
+    
+    if (images.length === 0) {
+        console.log('No images to proxy');
+        return html;
+    }
+    
+    console.log(`🖼️ Proxying ${images.length} images...`);
+    
+    // 画像URLを収集
+    const imageUrls = Array.from(images).map(img => img.getAttribute('data-original-src')).filter(Boolean);
+    
+    if (imageUrls.length === 0) {
+        return html;
+    }
+    
+    try {
+        // サーバー経由で画像を一括取得
+        const response = await fetch('/api/proxy-images', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ urls: imageUrls })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log(`✅ 画像取得完了: ${data.successful}/${data.total} 成功`);
+            
+            // 成功した画像をBase64データURLに置き換え
+            data.results.forEach((result, index) => {
+                if (result.success && images[index]) {
+                    images[index].setAttribute('src', result.dataUrl);
+                    images[index].removeAttribute('data-original-src');
+                } else if (!result.success) {
+                    console.warn(`画像取得失敗: ${result.url} - ${result.error}`);
+                }
+            });
+            
+            if (data.failed > 0) {
+                showSuccess('画像取得完了（一部失敗）', `${data.successful}/${data.total}個の画像を取得しました。${data.failed}個は失敗しました。`);
+            } else {
+                showSuccess('画像取得完了', `${data.successful}個の画像を取得しました。`);
+            }
+            
+            return doc.documentElement.outerHTML;
+        } else {
+            throw new Error(data.error || '画像の取得に失敗しました');
+        }
+    } catch (error) {
+        console.error('Error proxying images:', error);
+        showError('画像取得エラー', '一部の画像を取得できませんでした', error.message);
+        return html;
+    }
+}
+
 // フォーム送信処理
 websiteForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -79,7 +170,11 @@ websiteForm.addEventListener('submit', async (e) => {
     domainAssistantId = domainAssistantIdInput.value.trim();
     
     if (!websiteUrl || !businessId || !domainAssistantId) {
-        alert('すべての項目を入力してください。AIFAQ URLを入力すると、Business IDとDomain Assistant IDが自動で抽出されます。');
+        showError(
+            '入力エラー',
+            'すべての項目を入力してください。',
+            'AIFAQ URLを入力すると、Business IDとDomain Assistant IDが自動で抽出されます。'
+        );
         return;
     }
     
@@ -89,31 +184,67 @@ websiteForm.addEventListener('submit', async (e) => {
     btnLoading.style.display = 'flex';
     
     try {
+        console.log(`🌐 ウェブサイト取得開始: ${websiteUrl}`);
+        
         const response = await fetch('/api/fetch-website', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: websiteUrl })
+            body: JSON.stringify({ 
+                url: websiteUrl,
+                proxyImages: true
+            })
         });
         
         const data = await response.json();
         
         if (data.success) {
+            console.log(`✅ ウェブサイト取得成功`);
+            console.log(`📊 統計: ${data.stats.totalImages}個の画像を検出`);
+            
             originalHtml = data.html;
             currentHtml = data.html;
             isScriptInjected = false;
+            
+            // 画像をプロキシ経由で取得（オプション）
+            if (data.stats.totalImages > 0) {
+                const shouldProxyImages = confirm(
+                    `${data.stats.totalImages}個の画像が見つかりました。\n\n` +
+                    '画像をプロキシ経由で取得しますか？\n' +
+                    '（推奨: CORS制限を回避できますが、時間がかかります）'
+                );
+                
+                if (shouldProxyImages) {
+                    btnText.textContent = '画像を取得中...';
+                    btnText.style.display = 'inline';
+                    btnLoading.style.display = 'none';
+                    
+                    currentHtml = await proxyImages(currentHtml);
+                    originalHtml = currentHtml;
+                }
+            }
+            
             showPreview();
         } else {
-            alert('エラー: ' + (data.error || 'ウェブサイトの取得に失敗しました'));
+            showError(
+                'ウェブサイト取得エラー',
+                data.error || 'ウェブサイトの取得に失敗しました',
+                data.code ? `エラーコード: ${data.code}\n詳細: ${data.details || ''}` : null
+            );
         }
     } catch (error) {
-        console.error('Error:', error);
-        alert('ウェブサイトの取得中にエラーが発生しました: ' + error.message);
+        console.error('❌ Error:', error);
+        showError(
+            'ネットワークエラー',
+            'サーバーとの通信中にエラーが発生しました',
+            error.message
+        );
     } finally {
         // ローディング解除
         fetchBtn.disabled = false;
         btnText.style.display = 'inline';
+        btnText.textContent = 'ウェブサイトを取得';
         btnLoading.style.display = 'none';
     }
 });
@@ -146,8 +277,11 @@ function setupPreviewFrame() {
             
             // ホバー効果を追加
             addHoverEffects(iframeDoc);
+            
+            console.log('✅ プレビュー読み込み完了');
         } catch (e) {
-            console.error('iframe access error:', e);
+            console.error('❌ iframe access error:', e);
+            showError('プレビューエラー', 'プレビューの表示に失敗しました', e.message);
         }
     };
     
@@ -218,7 +352,7 @@ function handlePreviewClick(e) {
 
 // スクリプトを埋め込む
 function injectScript(element) {
-    const script = generateFreshworksScript();
+    const script = generateFireworkScript();
     
     try {
         // iframe内のドキュメントを取得
@@ -242,12 +376,14 @@ function injectScript(element) {
             
             // デバッグ：挿入されたことを確認
             console.log('✅ Firework AIFAQ script injected');
-            console.log('Script URL:', scriptTag.src);
-            console.log('fw-ava element:', fwAvaElement);
-            console.log('Attributes:', {
+            console.log('📍 Script URL:', scriptTag.src);
+            console.log('📍 fw-ava element:', fwAvaElement);
+            console.log('📍 Attributes:', {
                 domain_assistant_id: fwAvaElement.getAttribute('domain_assistant_id'),
                 layout: fwAvaElement.getAttribute('layout')
             });
+            
+            showSuccess('スクリプト埋め込み成功', 'Firework AIFAQスクリプトが正常に埋め込まれました');
         }
         
         // クリーンアップ：埋め込み用のスタイルとクラスを削除
@@ -257,19 +393,11 @@ function injectScript(element) {
         currentHtml = '<!DOCTYPE html>\n' + iframeDoc.documentElement.outerHTML;
         isScriptInjected = true;
         
-        // デバッグ：HTMLの一部を確認
-        console.log('HTML snippet around fw-ava:', 
-            currentHtml.substring(
-                currentHtml.indexOf('<fw-ava') - 100, 
-                currentHtml.indexOf('</fw-ava>') + 100
-            )
-        );
-        
         // 成功画面を表示
-        showSuccess(script);
+        showSuccessScreen(script);
     } catch (e) {
-        console.error('Script injection error:', e);
-        alert('スクリプトの埋め込みに失敗しました: ' + e.message);
+        console.error('❌ Script injection error:', e);
+        showError('スクリプト埋め込みエラー', 'スクリプトの埋め込みに失敗しました', e.message);
     }
 }
 
@@ -294,8 +422,8 @@ function cleanupInjectionMode(doc) {
     });
 }
 
-// Freshworksスクリプトを生成（表示用）
-function generateFreshworksScript() {
+// Fireworkスクリプトを生成（表示用）
+function generateFireworkScript() {
     return `<script async type="text/javascript" src="https://asset.fwscripts.com/js/ava.js?business_id=${businessId}"></script>
 <fw-ava
     domain_assistant_id="${domainAssistantId}"
@@ -304,7 +432,7 @@ function generateFreshworksScript() {
 }
 
 // 成功画面を表示
-function showSuccess(embeddedCode) {
+function showSuccessScreen(embeddedCode) {
     previewSection.style.display = 'none';
     successSection.style.display = 'block';
     
@@ -334,7 +462,7 @@ function showFinalPreview() {
     websitePreview.srcdoc = currentHtml;
     
     // ツールバーを更新
-    document.querySelector('.toolbar h2').textContent = '最終プレビュー（Freshworksスクリプト埋め込み済み）';
+    document.querySelector('.toolbar h2').textContent = '最終プレビュー（Firework AIFAQ埋め込み済み）';
     
     // 戻るボタンで成功画面に戻る
     backBtn.onclick = () => {
@@ -363,7 +491,7 @@ function downloadHtml() {
     // ファイル名を生成
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
     const filename = isScriptInjected 
-        ? `website-with-freshworks-${timestamp}.html`
+        ? `website-with-firework-${timestamp}.html`
         : `website-copy-${timestamp}.html`;
     
     a.download = filename;
@@ -372,7 +500,7 @@ function downloadHtml() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert(`HTMLファイル「${filename}」がダウンロードされました！`);
+    showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！`);
 }
 
 // 戻るボタン
