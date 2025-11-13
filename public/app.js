@@ -313,6 +313,14 @@ function setupPreviewFrame() {
     
     // iframeに書き込み
     const iframe = websitePreview;
+    
+    // キャッシュを回避するためにタイムスタンプを追加
+    const timestamp = new Date().getTime();
+    const htmlWithCacheBuster = modifiedHtml.replace(
+        /<head([^>]*)>/i,
+        `<head$1><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><!-- Cache Buster: ${timestamp} -->`
+    );
+    
     iframe.onload = function() {
         try {
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
@@ -323,14 +331,14 @@ function setupPreviewFrame() {
             // ホバー効果を追加
             addHoverEffects(iframeDoc);
             
-            console.log('✅ プレビュー読み込み完了');
+            console.log('✅ プレビュー読み込み完了 (Cache Buster: ' + timestamp + ')');
         } catch (e) {
             console.error('❌ iframe access error:', e);
             showError('プレビューエラー', 'プレビューの表示に失敗しました', e.message);
         }
     };
     
-    iframe.srcdoc = modifiedHtml;
+    iframe.srcdoc = htmlWithCacheBuster;
 }
 
 // クリック可能なオーバーレイを追加
@@ -414,13 +422,47 @@ function injectScript(element) {
         fwAvaElement.setAttribute('domain_assistant_id', domainAssistantId);
         fwAvaElement.setAttribute('layout', 'faq');
         
-        // クリックされた要素の後にスクリプトを挿入
-        if (element.parentNode) {
-            element.parentNode.insertBefore(scriptTag, element.nextSibling);
-            element.parentNode.insertBefore(fwAvaElement, scriptTag.nextSibling);
+        // 中央配置用のコンテナを作成
+        const container = iframeDoc.createElement('div');
+        container.style.cssText = 'display: flex; justify-content: center; align-items: center; width: 100%; margin: 20px 0;';
+        
+        // コンテナにスクリプトとfw-ava要素を追加
+        container.appendChild(scriptTag);
+        container.appendChild(fwAvaElement);
+        
+        // クリックされた要素を見つける
+        // ブロック要素（div, section, article等）を優先的に選択
+        let targetElement = element;
+        const blockElements = ['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'HEADER', 'FOOTER', 'ASIDE', 'NAV'];
+        
+        // 親要素を遡ってブロック要素を探す
+        while (targetElement && !blockElements.includes(targetElement.tagName)) {
+            targetElement = targetElement.parentElement;
+            if (!targetElement || targetElement === iframeDoc.body) {
+                targetElement = element; // 見つからない場合は元の要素を使用
+                break;
+            }
+        }
+        
+        // ブロックの中央に挿入
+        if (targetElement && targetElement.parentNode) {
+            // 子要素の数を取得
+            const childCount = targetElement.children.length;
+            const middleIndex = Math.floor(childCount / 2);
+            
+            if (childCount > 0) {
+                // 子要素がある場合は中央に挿入
+                const referenceNode = targetElement.children[middleIndex];
+                targetElement.insertBefore(container, referenceNode);
+            } else {
+                // 子要素がない場合は直接追加
+                targetElement.appendChild(container);
+            }
             
             // デバッグ：挿入されたことを確認
             console.log('✅ Firework AIFAQ script injected');
+            console.log('📍 Target element:', targetElement.tagName, targetElement.className);
+            console.log('📍 Inserted at position:', middleIndex, '/', childCount);
             console.log('📍 Script URL:', scriptTag.src);
             console.log('📍 fw-ava element:', fwAvaElement);
             console.log('📍 Attributes:', {
@@ -428,7 +470,7 @@ function injectScript(element) {
                 layout: fwAvaElement.getAttribute('layout')
             });
             
-            showSuccess('スクリプト埋め込み成功', 'Firework AIFAQスクリプトが正常に埋め込まれました');
+            showSuccess('スクリプト埋め込み成功', `Firework AIFAQスクリプトを${targetElement.tagName}ブロックの中央に埋め込みました`);
         }
         
         // クリーンアップ：埋め込み用のスタイルとクラスを削除
@@ -494,7 +536,11 @@ function showSuccessScreen(embeddedCode) {
     };
     
     document.getElementById('start-over-btn').onclick = () => {
-        location.reload();
+        // キャッシュをクリアしてからリロード
+        clearBrowserCache();
+        setTimeout(() => {
+            location.reload(true); // ハードリロード
+        }, 500);
     };
 }
 
@@ -548,18 +594,77 @@ function downloadHtml() {
     showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！`);
 }
 
+// キャッシュをクリアする関数
+function clearBrowserCache() {
+    console.log('🧹 ブラウザキャッシュをクリア中...');
+    
+    try {
+        // iframeのキャッシュをクリア
+        if (websitePreview) {
+            // iframeのsrcdocをクリア
+            websitePreview.srcdoc = '';
+            
+            // iframeを一時的に削除して再作成（完全なリセット）
+            const parent = websitePreview.parentNode;
+            const newIframe = websitePreview.cloneNode(false);
+            parent.removeChild(websitePreview);
+            parent.appendChild(newIframe);
+            
+            // グローバル変数を更新
+            window.websitePreview = newIframe;
+        }
+        
+        // Service Workerのキャッシュをクリア（存在する場合）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                registrations.forEach(registration => {
+                    registration.unregister();
+                });
+            });
+        }
+        
+        // Cache APIをクリア
+        if ('caches' in window) {
+            caches.keys().then(names => {
+                names.forEach(name => {
+                    caches.delete(name);
+                });
+            });
+        }
+        
+        console.log('✅ キャッシュクリア完了');
+        showSuccess('キャッシュクリア', 'ブラウザキャッシュをクリアしました');
+        
+    } catch (error) {
+        console.error('❌ キャッシュクリアエラー:', error);
+    }
+}
+
 // 戻るボタン
 backBtn.addEventListener('click', () => {
     if (isScriptInjected) {
-        if (confirm('埋め込んだスクリプトがリセットされます。よろしいですか？')) {
+        if (confirm('埋め込んだスクリプトがリセットされます。よろしいですか？\n\nブラウザキャッシュもクリアされます。')) {
+            // キャッシュをクリア
+            clearBrowserCache();
+            
+            // 状態をリセット
             currentHtml = originalHtml;
             isScriptInjected = false;
-            previewSection.style.display = 'none';
-            inputSection.style.display = 'block';
+            
+            // 少し待ってから画面を切り替え（キャッシュクリアの完了を待つ）
+            setTimeout(() => {
+                previewSection.style.display = 'none';
+                inputSection.style.display = 'block';
+            }, 500);
         }
     } else {
-        previewSection.style.display = 'none';
-        inputSection.style.display = 'block';
+        // キャッシュをクリア
+        clearBrowserCache();
+        
+        setTimeout(() => {
+            previewSection.style.display = 'none';
+            inputSection.style.display = 'block';
+        }, 500);
     }
 });
 
