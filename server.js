@@ -192,36 +192,59 @@ async function fetchWithRetry(url, targetUrl) {
 // ウェブサイトを取得するエンドポイント（画像プロキシオプション付き）
 app.post('/api/fetch-website', async (req, res) => {
   try {
-    const { url, proxyImages = false, usePuppeteer = false } = req.body;
+    const { url, manualHtml, baseUrl, proxyImages = false, usePuppeteer = false } = req.body;
     
-    if (!url) {
-      return res.status(400).json({ 
-        error: 'URLが指定されていません',
-        code: 'MISSING_URL'
-      });
-    }
-
-    // URLの検証
-    let targetUrl;
-    try {
-      targetUrl = new URL(url);
-    } catch (e) {
-      return res.status(400).json({ 
-        error: '無効なURLです',
-        code: 'INVALID_URL',
-        details: e.message
-      });
-    }
-
-    console.log(`Fetching: ${url} (proxyImages: ${proxyImages}, usePuppeteer: ${usePuppeteer})`);
-
     let html;
     let fetchMethod = 'standard';
     let fetchWarning = null;
+    let targetUrl;
     
-    try {
-      // まず標準的な方法で試行
-      const response = await axios.get(url, {
+    // 手動HTML入力モードの処理
+    if (manualHtml) {
+      console.log(`📝 Processing manual HTML input (length: ${manualHtml.length} chars)`);
+      
+      html = manualHtml;
+      fetchMethod = 'manual-input';
+      
+      // baseUrlが提供されている場合は使用
+      if (baseUrl) {
+        try {
+          targetUrl = new URL(baseUrl);
+          console.log(`🌐 Base URL provided: ${baseUrl}`);
+        } catch (e) {
+          console.warn(`⚠️ Invalid base URL: ${baseUrl}, proceeding without it`);
+          targetUrl = null;
+        }
+      } else {
+        console.log(`⚠️ No base URL provided for manual HTML`);
+        targetUrl = null;
+      }
+      
+    } else {
+      // 通常のURL取得モード
+      if (!url) {
+        return res.status(400).json({ 
+          error: 'URLが指定されていません',
+          code: 'MISSING_URL'
+        });
+      }
+
+      // URLの検証
+      try {
+        targetUrl = new URL(url);
+      } catch (e) {
+        return res.status(400).json({ 
+          error: '無効なURLです',
+          code: 'INVALID_URL',
+          details: e.message
+        });
+      }
+
+      console.log(`Fetching: ${url} (proxyImages: ${proxyImages}, usePuppeteer: ${usePuppeteer})`);
+      
+      try {
+        // まず標準的な方法で試行
+        const response = await axios.get(url, {
         headers: {
           'User-Agent': USER_AGENTS[0],
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -290,19 +313,32 @@ app.post('/api/fetch-website', async (req, res) => {
           details: `初回: ${firstError.message}\n再試行: ${retryError.message}`,
           suggestion: suggestion
         });
+        }
       }
     }
 
     const $ = cheerio.load(html);
 
     // 相対URLを絶対URLに変換
-    const baseUrl = `${targetUrl.protocol}//${targetUrl.host}`;
-    
-    // <base> タグを追加または更新（404エラー対策）
-    if ($('base').length === 0) {
-      $('head').prepend(`<base href="${baseUrl}/">`);
+    let resolvedBaseUrl = null;
+    if (targetUrl) {
+      resolvedBaseUrl = `${targetUrl.protocol}//${targetUrl.host}`;
+      
+      // <base> タグを追加または更新（404エラー対策）
+      if ($('base').length === 0) {
+        $('head').prepend(`<base href="${resolvedBaseUrl}/">`);
+      } else {
+        $('base').attr('href', `${resolvedBaseUrl}/`);
+      }
     } else {
-      $('base').attr('href', `${baseUrl}/`);
+      // 手動入力でbaseUrlがない場合は、既存のbaseタグを確認
+      const existingBase = $('base').attr('href');
+      if (existingBase) {
+        resolvedBaseUrl = existingBase;
+        console.log(`📍 Using existing base tag: ${resolvedBaseUrl}`);
+      } else {
+        console.log(`⚠️ No base URL available, relative URLs will not be resolved`);
+      }
     }
     
     // エラーハンドリングスクリプトを追加（404/403エラーを無視）
@@ -324,16 +360,19 @@ app.post('/api/fetch-website', async (req, res) => {
       if (!url || url.startsWith('data:')) return null;
       
       if (url.startsWith('//')) {
-        return targetUrl.protocol + url;
+        return targetUrl ? (targetUrl.protocol + url) : ('https:' + url);
       } else if (url.startsWith('http')) {
         return url;
-      } else {
+      } else if (resolvedBaseUrl) {
         try {
-          return new URL(url, baseUrl).href;
+          return new URL(url, resolvedBaseUrl).href;
         } catch (e) {
           console.warn(`Failed to convert URL: ${url}`);
           return null;
         }
+      } else {
+        // baseUrlがない場合はそのまま返す
+        return url;
       }
     }
     
@@ -341,11 +380,13 @@ app.post('/api/fetch-website', async (req, res) => {
     $('a').each((i, elem) => {
       const href = $(elem).attr('href');
       if (href && !href.startsWith('http') && !href.startsWith('//') && !href.startsWith('javascript:') && !href.startsWith('#')) {
-        try {
-          const absoluteUrl = new URL(href, baseUrl).href;
-          $(elem).attr('href', absoluteUrl);
-        } catch (e) {
-          console.warn(`Failed to convert href: ${href}`);
+        if (resolvedBaseUrl) {
+          try {
+            const absoluteUrl = new URL(href, resolvedBaseUrl).href;
+            $(elem).attr('href', absoluteUrl);
+          } catch (e) {
+            console.warn(`Failed to convert href: ${href}`);
+          }
         }
       }
     });
@@ -426,14 +467,16 @@ app.post('/api/fetch-website', async (req, res) => {
     $('link[rel="stylesheet"]').each((i, elem) => {
       const href = $(elem).attr('href');
       if (href && !href.startsWith('http') && !href.startsWith('//')) {
-        try {
-          const absoluteUrl = new URL(href, baseUrl).href;
-          $(elem).attr('href', absoluteUrl);
-        } catch (e) {
-          console.warn(`Failed to convert stylesheet href: ${href}`);
+        if (resolvedBaseUrl) {
+          try {
+            const absoluteUrl = new URL(href, resolvedBaseUrl).href;
+            $(elem).attr('href', absoluteUrl);
+          } catch (e) {
+            console.warn(`Failed to convert stylesheet href: ${href}`);
+          }
         }
       } else if (href && href.startsWith('//')) {
-        $(elem).attr('href', targetUrl.protocol + href);
+        $(elem).attr('href', targetUrl ? (targetUrl.protocol + href) : ('https:' + href));
       }
     });
 
@@ -441,14 +484,16 @@ app.post('/api/fetch-website', async (req, res) => {
     $('script[src]').each((i, elem) => {
       const src = $(elem).attr('src');
       if (src && !src.startsWith('http') && !src.startsWith('//')) {
-        try {
-          const absoluteUrl = new URL(src, baseUrl).href;
-          $(elem).attr('src', absoluteUrl);
-        } catch (e) {
-          console.warn(`Failed to convert script src: ${src}`);
+        if (resolvedBaseUrl) {
+          try {
+            const absoluteUrl = new URL(src, resolvedBaseUrl).href;
+            $(elem).attr('src', absoluteUrl);
+          } catch (e) {
+            console.warn(`Failed to convert script src: ${src}`);
+          }
         }
       } else if (src && src.startsWith('//')) {
-        $(elem).attr('src', targetUrl.protocol + src);
+        $(elem).attr('src', targetUrl ? (targetUrl.protocol + src) : ('https:' + src));
       }
     });
 
@@ -456,14 +501,16 @@ app.post('/api/fetch-website', async (req, res) => {
     $('link[href]').each((i, elem) => {
       const href = $(elem).attr('href');
       if (href && !href.startsWith('http') && !href.startsWith('//')) {
-        try {
-          const absoluteUrl = new URL(href, baseUrl).href;
-          $(elem).attr('href', absoluteUrl);
-        } catch (e) {
-          console.warn(`Failed to convert link href: ${href}`);
+        if (resolvedBaseUrl) {
+          try {
+            const absoluteUrl = new URL(href, resolvedBaseUrl).href;
+            $(elem).attr('href', absoluteUrl);
+          } catch (e) {
+            console.warn(`Failed to convert link href: ${href}`);
+          }
         }
       } else if (href && href.startsWith('//')) {
-        $(elem).attr('href', targetUrl.protocol + href);
+        $(elem).attr('href', targetUrl ? (targetUrl.protocol + href) : ('https:' + href));
       }
     });
 
@@ -473,14 +520,17 @@ app.post('/api/fetch-website', async (req, res) => {
       if (style && style.includes('url(')) {
         const updatedStyle = style.replace(/url\(['"]?([^'")\s]+)['"]?\)/g, (match, url) => {
           if (!url.startsWith('http') && !url.startsWith('//') && !url.startsWith('data:')) {
-            try {
-              const absoluteUrl = new URL(url, baseUrl).href;
-              return `url('${absoluteUrl}')`;
-            } catch (e) {
-              return match;
+            if (resolvedBaseUrl) {
+              try {
+                const absoluteUrl = new URL(url, resolvedBaseUrl).href;
+                return `url('${absoluteUrl}')`;
+              } catch (e) {
+                return match;
+              }
             }
+            return match;
           } else if (url.startsWith('//')) {
-            return `url('${targetUrl.protocol + url}')`;
+            return `url('${targetUrl ? (targetUrl.protocol + url) : ('https:' + url)}')`;
           }
           return match;
         });
@@ -493,15 +543,17 @@ app.post('/api/fetch-website', async (req, res) => {
     const responseData = {
       success: true,
       html: html,
-      baseUrl: baseUrl,
+      baseUrl: resolvedBaseUrl || 'N/A',
       fetchMethod: fetchMethod,
       stats: {
         totalImages: imageUrls.length,
-        domain: targetUrl.hostname
+        domain: targetUrl ? targetUrl.hostname : 'manual-input'
       }
     };
 
-    if (fetchMethod !== 'standard') {
+    if (fetchMethod === 'manual-input') {
+      responseData.message = `✅ 手動入力されたHTMLを処理しました`;
+    } else if (fetchMethod !== 'standard') {
       responseData.message = `ℹ️ 通常の方法で取得できなかったため、別のUser-Agentを使用しました（${fetchMethod}）`;
     }
 

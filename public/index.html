@@ -22,15 +22,45 @@
                 </div>
 
                 <form id="website-form">
-                    <div class="form-group">
-                        <label for="website-url">📍 ウェブサイトURL</label>
-                        <input 
-                            type="url" 
-                            id="website-url" 
-                            placeholder="https://example.com" 
-                            required
-                        >
-                        <small>複写したいウェブサイトのURLを入力してください</small>
+                    <!-- タブシステム -->
+                    <div class="input-tabs">
+                        <button type="button" class="tab-btn active" data-tab="url-input">🌐 URL入力</button>
+                        <button type="button" class="tab-btn" data-tab="manual-input">📝 ソースコード入力</button>
+                    </div>
+
+                    <!-- URL入力タブ -->
+                    <div id="url-input-tab" class="tab-content active">
+                        <div class="form-group">
+                            <label for="website-url">📍 ウェブサイトURL</label>
+                            <input 
+                                type="url" 
+                                id="website-url" 
+                                placeholder="https://example.com"
+                            >
+                            <small>複写したいウェブサイトのURLを入力してください</small>
+                        </div>
+                    </div>
+
+                    <!-- 手動入力タブ -->
+                    <div id="manual-input-tab" class="tab-content" style="display: none;">
+                        <div class="form-group">
+                            <label for="manual-html">📄 HTMLソースコード</label>
+                            <textarea 
+                                id="manual-html" 
+                                placeholder="<!DOCTYPE html>&#10;<html>&#10;<head>&#10;    <title>サイトタイトル</title>&#10;</head>&#10;<body>&#10;    ...ここにHTMLコードを貼り付けてください...&#10;</body>&#10;</html>"
+                                rows="15"
+                            ></textarea>
+                            <small>💡 <strong>取得方法:</strong> 複写したいサイトで右クリック → 「ページのソースを表示」→ すべてコピー → ここに貼り付け</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="manual-base-url">🌐 ベースURL（オプション）</label>
+                            <input 
+                                type="url" 
+                                id="manual-base-url" 
+                                placeholder="https://example.com"
+                            >
+                            <small>相対URLを絶対URLに変換するためのベースURL（省略可）</small>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -71,9 +101,12 @@
                     <button type="submit" class="btn btn-primary" id="fetch-btn">
                         <span class="btn-text">ウェブサイトを取得</span>
                         <span class="btn-loading" style="display: none;">
-                            <span class="spinner"></span> 取得中...
+                            <span class="spinner"></span> 処理中...
                         </span>
                     </button>
+
+                    <!-- エラー表示エリア -->
+                    <div id="error-message" class="error-box" style="display: none;"></div>
                 </form>
             </div>
         </div>

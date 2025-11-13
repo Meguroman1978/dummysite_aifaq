@@ -21,11 +21,20 @@ const btnLoading = document.querySelector('.btn-loading');
 const backBtn = document.getElementById('back-btn');
 const downloadBtn = document.getElementById('download-btn');
 const websitePreview = document.getElementById('website-preview');
+const manualHtmlInput = document.getElementById('manual-html');
+const manualBaseUrlInput = document.getElementById('manual-base-url');
+const errorMessageBox = document.getElementById('error-message');
+
+// Tab system
+const tabButtons = document.querySelectorAll('.tab-btn');
+const urlInputTab = document.getElementById('url-input-tab');
+const manualInputTab = document.getElementById('manual-input-tab');
+let currentInputMode = 'url'; // 'url' or 'manual'
 
 // エラー表示用の関数
-function showError(title, message, details = null) {
+function showError(title, message, details = null, showManualInputOption = false) {
     let errorHtml = `
-        <div style="background: #fee; border-left: 4px solid #f44; padding: 20px; border-radius: 8px; margin: 20px;">
+        <div style="background: #fee; border-left: 4px solid #f44; padding: 20px; border-radius: 8px; margin-top: 20px;">
             <h3 style="color: #c00; margin-top: 0;">❌ ${title}</h3>
             <p style="color: #333; margin: 10px 0;">${message}</p>
     `;
@@ -39,9 +48,29 @@ function showError(title, message, details = null) {
         `;
     }
     
+    if (showManualInputOption) {
+        errorHtml += `
+            <div style="margin-top: 15px; padding: 15px; background: #e6f7ff; border-radius: 8px;">
+                <p style="color: #0366d6; margin: 0;"><strong>💡 代替方法:</strong></p>
+                <p style="color: #333; margin: 8px 0 0 0;">URLの自動取得ができない場合は、<strong>「ソースコード入力」</strong>タブから手動でHTMLを貼り付けてお試しください。</p>
+            </div>
+        `;
+    }
+    
     errorHtml += `</div>`;
     
-    alert(`${title}\n\n${message}${details ? '\n\n' + details : ''}`);
+    // エラーメッセージボックスに表示
+    errorMessageBox.innerHTML = errorHtml;
+    errorMessageBox.style.display = 'block';
+    
+    // アラートも表示（オプション）
+    // alert(`${title}\n\n${message}${details ? '\n\n' + details : ''}`);
+}
+
+// エラーメッセージをクリア
+function clearError() {
+    errorMessageBox.style.display = 'none';
+    errorMessageBox.innerHTML = '';
 }
 
 // 成功メッセージ表示
@@ -68,6 +97,43 @@ function extractIdsFromAifaqUrl(url) {
         return null;
     }
 }
+
+// タブ切り替え処理
+tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const targetTab = btn.getAttribute('data-tab');
+        
+        // すべてのタブボタンとコンテンツから active クラスを削除
+        tabButtons.forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => {
+            t.style.display = 'none';
+            t.classList.remove('active');
+        });
+        
+        // クリックされたタブをアクティブに
+        btn.classList.add('active');
+        const targetContent = document.getElementById(targetTab + '-tab');
+        if (targetContent) {
+            targetContent.style.display = 'block';
+            targetContent.classList.add('active');
+        }
+        
+        // モード切り替え
+        currentInputMode = targetTab === 'url-input' ? 'url' : 'manual';
+        
+        // ボタンテキスト更新
+        if (currentInputMode === 'manual') {
+            btnText.textContent = 'HTMLを処理';
+        } else {
+            btnText.textContent = 'ウェブサイトを取得';
+        }
+        
+        // エラーメッセージをクリア
+        clearError();
+        
+        console.log('入力モード切り替え:', currentInputMode);
+    });
+});
 
 // AIFAQ URL入力時の自動抽出
 aifaqUrlInput.addEventListener('input', (e) => {
@@ -210,15 +276,39 @@ async function proxyImages(html) {
 websiteForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    websiteUrl = websiteUrlInput.value.trim();
+    // エラーメッセージをクリア
+    clearError();
+    
     businessId = businessIdInput.value.trim();
     domainAssistantId = domainAssistantIdInput.value.trim();
     
-    if (!websiteUrl || !businessId || !domainAssistantId) {
+    // AIFAQ IDチェック
+    if (!businessId || !domainAssistantId) {
         showError(
             '入力エラー',
-            'すべての項目を入力してください。',
+            'AIFAQ URLを入力してください。',
             'AIFAQ URLを入力すると、Business IDとDomain Assistant IDが自動で抽出されます。'
+        );
+        return;
+    }
+    
+    // モードに応じた処理
+    if (currentInputMode === 'url') {
+        await handleUrlInput();
+    } else {
+        await handleManualInput();
+    }
+});
+
+// URL入力モードの処理
+async function handleUrlInput() {
+    websiteUrl = websiteUrlInput.value.trim();
+    
+    if (!websiteUrl) {
+        showError(
+            '入力エラー',
+            'ウェブサイトURLを入力してください。',
+            null
         );
         return;
     }
@@ -298,9 +388,124 @@ websiteForm.addEventListener('submit', async (e) => {
                 errorDetails += `\n💡 提案:\n${data.suggestion}`;
             }
             
+            // 403/404エラーの場合は手動入力オプションを表示
+            const shouldShowManualOption = data.code === 'HTTP_403' || data.code === 'HTTP_404';
+            
             showError(
                 'ウェブサイト取得エラー',
                 data.error || 'ウェブサイトの取得に失敗しました',
+                errorDetails || null,
+                shouldShowManualOption
+            );
+        }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        showError(
+            'ネットワークエラー',
+            'サーバーとの通信中にエラーが発生しました',
+            error.message,
+            true // ネットワークエラーでも手動入力を提案
+        );
+    } finally {
+        // ローディング解除
+        fetchBtn.disabled = false;
+        btnText.style.display = 'inline';
+        btnText.textContent = 'ウェブサイトを取得';
+        btnLoading.style.display = 'none';
+    }
+}
+
+// 手動入力モードの処理
+async function handleManualInput() {
+    const manualHtml = manualHtmlInput.value.trim();
+    const baseUrl = manualBaseUrlInput.value.trim();
+    
+    if (!manualHtml) {
+        showError(
+            '入力エラー',
+            'HTMLソースコードを入力してください。',
+            '複写したいサイトで右クリック → 「ページのソースを表示」→ すべてコピー → ここに貼り付けしてください。'
+        );
+        return;
+    }
+    
+    // 簡単なHTMLバリデーション
+    if (!manualHtml.includes('<html') && !manualHtml.includes('<HTML')) {
+        showError(
+            '入力エラー',
+            '有効なHTMLではありません。',
+            '<html>タグを含む完全なHTMLソースコードを入力してください。'
+        );
+        return;
+    }
+    
+    // ローディング状態
+    fetchBtn.disabled = true;
+    btnText.style.display = 'none';
+    btnLoading.style.display = 'flex';
+    
+    try {
+        console.log(`📝 手動HTML処理開始`);
+        
+        const response = await fetch('/api/fetch-website', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                manualHtml: manualHtml,
+                baseUrl: baseUrl || null,
+                proxyImages: true
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log(`✅ 手動HTML処理成功`);
+            console.log(`📊 統計: ${data.stats.totalImages}個の画像を検出`);
+            
+            // メッセージがある場合は表示
+            if (data.message) {
+                console.log('💬 ' + data.message);
+            }
+            
+            originalHtml = data.html;
+            currentHtml = data.html;
+            isScriptInjected = false;
+            websiteUrl = baseUrl || '手動入力';
+            
+            // 画像をプロキシ経由で取得（オプション）
+            if (data.stats.totalImages > 0) {
+                const shouldProxyImages = confirm(
+                    `${data.stats.totalImages}個の画像が見つかりました。\n\n` +
+                    '画像をプロキシ経由で取得しますか？\n' +
+                    '（推奨: CORS制限を回避できますが、時間がかかります）'
+                );
+                
+                if (shouldProxyImages) {
+                    btnText.textContent = '画像を取得中...';
+                    btnText.style.display = 'inline';
+                    btnLoading.style.display = 'none';
+                    
+                    currentHtml = await proxyImages(currentHtml);
+                    originalHtml = currentHtml;
+                }
+            }
+            
+            showPreview();
+        } else {
+            let errorDetails = '';
+            if (data.code) {
+                errorDetails += `エラーコード: ${data.code}\n`;
+            }
+            if (data.details) {
+                errorDetails += `詳細: ${data.details}\n`;
+            }
+            
+            showError(
+                'HTML処理エラー',
+                data.error || 'HTMLの処理に失敗しました',
                 errorDetails || null
             );
         }
@@ -315,10 +520,10 @@ websiteForm.addEventListener('submit', async (e) => {
         // ローディング解除
         fetchBtn.disabled = false;
         btnText.style.display = 'inline';
-        btnText.textContent = 'ウェブサイトを取得';
+        btnText.textContent = 'HTMLを処理';
         btnLoading.style.display = 'none';
     }
-});
+}
 
 // プレビュー表示
 function showPreview() {
