@@ -636,19 +636,6 @@ app.post('/api/fetch-website', async (req, res) => {
             e.preventDefault();
             console.log('フォーム送信を防止');
           }, true);
-          
-          // window.location.href変更を防止（読み取りは許可）
-          var locationDescriptor = Object.getOwnPropertyDescriptor(window.location, 'href');
-          if (locationDescriptor && locationDescriptor.set) {
-            var originalSetter = locationDescriptor.set;
-            Object.defineProperty(window.location, 'href', {
-              get: locationDescriptor.get,
-              set: function(value) {
-                console.log('window.location.href変更を防止:', value);
-                // 実際には変更しない
-              }
-            });
-          }
         }
       </script>
     `;
