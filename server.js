@@ -609,34 +609,50 @@ app.post('/api/fetch-website', async (req, res) => {
     // エラーハンドリング + ナビゲーション防止スクリプトを追加
     const errorHandlingScript = `
       <script>
-        // リソース読み込みエラーを無視
-        window.addEventListener('error', function(e) {
-          if (e.target.tagName === 'IMG' || e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK') {
-            e.preventDefault();
-            console.warn('リソース読み込みエラーを無視:', e.target.src || e.target.href);
-          }
-        }, true);
-        
-        // iframe内でのみナビゲーションを防止（ダウンロードしたHTMLでは動作しない）
-        if (window.self !== window.top) {
-          // リンククリックを無効化
-          document.addEventListener('click', function(e) {
-            var target = e.target;
-            while (target && target.tagName !== 'A') {
-              target = target.parentElement;
-            }
-            if (target && target.tagName === 'A' && target.href) {
+        (function() {
+          // リソース読み込みエラーを無視
+          window.addEventListener('error', function(e) {
+            if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
               e.preventDefault();
-              console.log('リンククリックを防止:', target.href);
+              console.warn('リソース読み込みエラーを無視:', e.target.src || e.target.href);
             }
           }, true);
           
-          // フォーム送信を防止
-          document.addEventListener('submit', function(e) {
-            e.preventDefault();
-            console.log('フォーム送信を防止');
-          }, true);
-        }
+          // DOMが完全に読み込まれた後にナビゲーション防止を設定
+          function setupNavigationPrevention() {
+            // iframe内でのみナビゲーションを防止（ダウンロードしたHTMLでは動作しない）
+            try {
+              if (window.self !== window.top) {
+                // リンククリックを無効化
+                document.addEventListener('click', function(e) {
+                  var target = e.target;
+                  while (target && target.tagName !== 'A') {
+                    target = target.parentElement;
+                  }
+                  if (target && target.tagName === 'A' && target.href) {
+                    e.preventDefault();
+                    console.log('リンククリックを防止:', target.href);
+                  }
+                }, true);
+                
+                // フォーム送信を防止
+                document.addEventListener('submit', function(e) {
+                  e.preventDefault();
+                  console.log('フォーム送信を防止');
+                }, true);
+              }
+            } catch (err) {
+              console.warn('Navigation prevention setup error:', err);
+            }
+          }
+          
+          // DOMContentLoaded後に実行
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupNavigationPrevention);
+          } else {
+            setupNavigationPrevention();
+          }
+        })();
       </script>
     `;
     $('head').append(errorHandlingScript);
@@ -864,6 +880,56 @@ app.post('/api/fetch-website', async (req, res) => {
       if (removed.length > 0) {
         console.log(`  ❌ Removed ${tool} scripts (${removed.length})`);
         removed.remove();
+      }
+    });
+    
+    // 問題を引き起こす可能性のある追跡・分析スクリプトを削除
+    const problematicScripts = [
+      'google-analytics',
+      'googletagmanager',
+      'gtag',
+      'facebook',
+      'fbevents',
+      'appsflyer',
+      'onelink',
+      'bing.com',
+      'sprout',
+      'ebis.ne.jp',
+      'log', // カクヤス特有のログAPIリクエストスクリプト
+      '__LBCUA',
+      '_DumpException'
+    ];
+    
+    // 外部スクリプトを削除
+    problematicScripts.forEach(keyword => {
+      const removed = $(`script[src*="${keyword}"]`);
+      if (removed.length > 0) {
+        console.log(`  ❌ Removed problematic external scripts: ${keyword} (${removed.length})`);
+        removed.remove();
+      }
+    });
+    
+    // インラインスクリプトも削除（XHRやiframe作成を含む）
+    $('script:not([src])').each((i, elem) => {
+      const scriptContent = $(elem).html();
+      if (scriptContent) {
+        // 問題のあるパターンをチェック
+        const hasProblematicCode = problematicScripts.some(keyword => 
+          scriptContent.includes(keyword)
+        ) || 
+        scriptContent.includes('XMLHttpRequest') ||
+        scriptContent.includes('fetch(') ||
+        scriptContent.includes('X-Frame-Options') ||
+        scriptContent.includes('createElement("iframe")') ||
+        scriptContent.includes('gtag(') ||
+        scriptContent.includes('fbq(') ||
+        scriptContent.includes('_satellite') ||
+        scriptContent.includes('dataLayer');
+        
+        if (hasProblematicCode) {
+          console.log(`  ❌ Removed problematic inline script (contains tracking/XHR/iframe)`);
+          $(elem).remove();
+        }
       }
     });
     
