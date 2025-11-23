@@ -3,9 +3,42 @@ const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// プロキシ環境（サンドボックス）対応
+app.set('trust proxy', true);
+
+// 一時的なHTMLストレージ（メモリベース）
+const tempHtmlStorage = new Map();
+const hostedHtmlStorage = new Map(); // 公開用のHTML（3日間保存）
+
+// 保存期間の定数
+const PREVIEW_EXPIRY = 30 * 60 * 1000; // 30分
+const HOSTED_EXPIRY = 3 * 24 * 60 * 60 * 1000; // 3日間
+
+// 古いエントリを定期的にクリーンアップ
+setInterval(() => {
+  const now = Date.now();
+  
+  // プレビュー用HTML（30分）
+  for (const [id, data] of tempHtmlStorage.entries()) {
+    if (now - data.timestamp > PREVIEW_EXPIRY) {
+      tempHtmlStorage.delete(id);
+      console.log(`🗑️  Cleaned up preview HTML: ${id}`);
+    }
+  }
+  
+  // ホスティング用HTML（3日間）
+  for (const [id, data] of hostedHtmlStorage.entries()) {
+    if (now - data.timestamp > HOSTED_EXPIRY) {
+      hostedHtmlStorage.delete(id);
+      console.log(`🗑️  Cleaned up hosted HTML: ${id} (age: ${Math.floor((now - data.timestamp) / (24 * 60 * 60 * 1000))} days)`);
+    }
+  }
+}, 5 * 60 * 1000); // 5分ごとにチェック
 
 // ミドルウェア設定
 app.use(cors());
@@ -20,6 +53,181 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
 ];
+
+// 色抽出関数：ウェブサイトから使用頻度の高い色を抽出（より厳密）
+function extractTopColors($) {
+  const colorMap = new Map();
+  
+  // RGB/RGBA/HEX色を正規化してRGB形式に変換
+  function normalizeColor(colorStr) {
+    if (!colorStr || colorStr === 'transparent' || colorStr === 'inherit' || colorStr === 'initial' || colorStr === 'currentcolor') {
+      return null;
+    }
+    
+    colorStr = colorStr.trim().toLowerCase();
+    
+    // rgb(a) 形式
+    const rgbMatch = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) {
+      const r = parseInt(rgbMatch[1]);
+      const g = parseInt(rgbMatch[2]);
+      const b = parseInt(rgbMatch[3]);
+      
+      // 白・黒・グレーを除外（閾値設定）
+      if ((r > 240 && g > 240 && b > 240) || // ほぼ白
+          (r < 30 && g < 30 && b < 30) || // ほぼ黒
+          (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15)) { // グレー
+        return null;
+      }
+      
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    // HEX形式
+    const hexMatch = colorStr.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+    if (hexMatch) {
+      let hex = hexMatch[1];
+      if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      }
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      // 白・黒・グレーを除外
+      if ((r > 240 && g > 240 && b > 240) || 
+          (r < 30 && g < 30 && b < 30) ||
+          (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15)) {
+        return null;
+      }
+      
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    return null;
+  }
+  
+  // より厳密：実際に表示されている可能性の高い要素のみから抽出
+  // visible要素を優先的に抽出
+  $('body *').each((i, elem) => {
+    const $elem = $(elem);
+    const tagName = elem.tagName.toLowerCase();
+    
+    // script, style, head内の要素は除外
+    if (['script', 'style', 'meta', 'link', 'title'].includes(tagName)) {
+      return;
+    }
+    
+    // style属性から色を取得（インラインスタイルは実際に使われている可能性が高い）
+    const style = $elem.attr('style');
+    if (style) {
+      // color（テキスト色）
+      const colorMatch = style.match(/color:\s*([^;]+)/i);
+      if (colorMatch) {
+        const normalized = normalizeColor(colorMatch[1]);
+        if (normalized) {
+          colorMap.set(normalized, (colorMap.get(normalized) || 0) + 3); // インラインスタイルは重み3倍
+        }
+      }
+      
+      // background-color
+      const bgMatch = style.match(/background-color:\s*([^;]+)/i);
+      if (bgMatch) {
+        const normalized = normalizeColor(bgMatch[1]);
+        if (normalized) {
+          colorMap.set(normalized, (colorMap.get(normalized) || 0) + 5); // 背景色は重み5倍
+        }
+      }
+      
+      // border-color
+      const borderMatch = style.match(/border-color:\s*([^;]+)/i);
+      if (borderMatch) {
+        const normalized = normalizeColor(borderMatch[1]);
+        if (normalized) {
+          colorMap.set(normalized, (colorMap.get(normalized) || 0) + 2);
+        }
+      }
+    }
+  });
+  
+  // ボタン、リンク、重要な要素のCSS色を優先的に抽出
+  $('style').each((i, elem) => {
+    const cssText = $(elem).html();
+    if (!cssText) return;
+    
+    // 重要なセレクタ（ボタン、リンク、CTAなど）に関連する色を高く評価
+    const importantSelectors = ['button', 'a', '.btn', '.cta', '[class*="button"]', '[class*="link"]'];
+    
+    importantSelectors.forEach(selector => {
+      // セレクタに関連するCSSブロックを探す
+      const selectorRegex = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*{[^}]*}`, 'gi');
+      const blocks = cssText.match(selectorRegex) || [];
+      
+      blocks.forEach(block => {
+        // color
+        const colorMatches = block.matchAll(/color:\s*([^;}\s]+)/gi);
+        for (const match of colorMatches) {
+          const normalized = normalizeColor(match[1]);
+          if (normalized) {
+            colorMap.set(normalized, (colorMap.get(normalized) || 0) + 4); // 重要要素は重み4倍
+          }
+        }
+        
+        // background-color
+        const bgMatches = block.matchAll(/background(?:-color)?:\s*([^;}\s]+)/gi);
+        for (const match of bgMatches) {
+          const normalized = normalizeColor(match[1]);
+          if (normalized) {
+            colorMap.set(normalized, (colorMap.get(normalized) || 0) + 6); // ボタン背景は最重要
+          }
+        }
+      });
+    });
+  });
+  
+  // 頻度順にソート（最低カウント3以上のみ採用 = 実際に使われている可能性が高い）
+  let sortedColors = Array.from(colorMap.entries())
+    .filter(([color, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8) // 最大8色に変更
+    .map(([color, count]) => ({
+      color: color,
+      count: count,
+      hex: rgbToHex(color)
+    }));
+  
+  console.log(`🎨 Found ${sortedColors.length} colors with minimum usage threshold`);
+  
+  // 7色以下で黒が含まれていない場合、黒を追加
+  if (sortedColors.length <= 7) {
+    const hasBlack = sortedColors.some(c => c.hex.toLowerCase() === '#000000');
+    if (!hasBlack) {
+      sortedColors.push({
+        color: 'rgb(0, 0, 0)',
+        count: 0,
+        hex: '#000000'
+      });
+      console.log('✅ Added black color as fallback option');
+    }
+  }
+  
+  return sortedColors;
+}
+
+// RGB文字列をHEXに変換
+function rgbToHex(rgb) {
+  const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!match) return rgb;
+  
+  const r = parseInt(match[1]);
+  const g = parseInt(match[2]);
+  const b = parseInt(match[3]);
+  
+  return '#' + [r, g, b].map(x => {
+    const hex = x.toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+}
 
 // 画像をプロキシ経由で取得するエンドポイント
 app.get('/api/proxy-image', async (req, res) => {
@@ -243,8 +451,58 @@ app.post('/api/fetch-website', async (req, res) => {
       console.log(`Fetching: ${url} (proxyImages: ${proxyImages}, usePuppeteer: ${usePuppeteer})`);
       
       try {
-        // まず標準的な方法で試行
-        const response = await axios.get(url, {
+        // Puppeteerモードが有効な場合は、最初からPuppeteerを使用
+        if (usePuppeteer) {
+          console.log('🤖 Puppeteerモードで取得中...');
+          const puppeteer = require('puppeteer');
+          
+          const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-accelerated-2d-canvas',
+              '--disable-gpu'
+            ]
+          });
+          
+          try {
+            const page = await browser.newPage();
+            
+            // User-AgentをGooglebotに設定（robots.txt対策）
+            // 多くのサイトがGooglebotにはCSS/JS/画像へのアクセスを許可している
+            const googlebotUA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+            await page.setUserAgent(googlebotUA);
+            console.log('🤖 User-Agent: Googlebot');
+            
+            // ビューポート設定
+            await page.setViewport({ width: 1920, height: 1080 });
+            
+            // リソース読み込みを有効化（画像、CSS、JSすべて）
+            await page.setRequestInterception(false);
+            
+            // ページにアクセス
+            console.log('🌐 Puppeteerでページを読み込み中...');
+            await page.goto(url, {
+              waitUntil: 'networkidle2',
+              timeout: 30000
+            });
+            
+            // JavaScriptが完全に実行されるまで待機
+            await page.waitForTimeout(2000);
+            
+            // ページのHTMLを取得
+            html = await page.content();
+            fetchMethod = 'puppeteer-googlebot';
+            console.log('✅ Puppeteerで取得成功（Googlebot UA）');
+            
+          } finally {
+            await browser.close();
+          }
+        } else {
+          // 標準的な方法で試行
+          const response = await axios.get(url, {
         headers: {
           'User-Agent': USER_AGENTS[0],
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -261,17 +519,17 @@ app.post('/api/fetch-website', async (req, res) => {
         validateStatus: (status) => status >= 200 && status < 500
       });
 
-      if (response.status === 403) {
-        throw new Error('403 Forbidden - 複数のUser-Agentで再試行');
-      } else if (response.status === 200) {
-        html = response.data;
-      } else {
-        // 200以外だが取得できた場合
-        html = response.data;
-        fetchWarning = `⚠️ HTTPステータス ${response.status} でしたが、コンテンツは取得できました`;
-      }
-      
-    } catch (firstError) {
+          if (response.status === 403) {
+            throw new Error('403 Forbidden - 複数のUser-Agentで再試行');
+          } else if (response.status === 200) {
+            html = response.data;
+          } else {
+            // 200以外だが取得できた場合
+            html = response.data;
+            fetchWarning = `⚠️ HTTPステータス ${response.status} でしたが、コンテンツは取得できました`;
+          }
+        }
+      } catch (firstError) {
       // 失敗した場合、複数のUser-Agentで再試行
       console.warn(`⚠️ 初回取得失敗: ${firstError.message}`);
       console.log('🔄 複数のUser-Agentで再試行中...');
@@ -292,7 +550,7 @@ app.post('/api/fetch-website', async (req, res) => {
         if (firstError.response?.status === 403 || retryError.message.includes('403')) {
           errorCode = 'HTTP_403';
           userMessage = 'アクセスが拒否されました（403 Forbidden）';
-          suggestion = 'このウェブサイトはBot対策が厳しく、複写できません。\n\n代替案:\n1. サイト管理者に連絡して許可を得る\n2. より軽量なページを試す\n3. 別のURLを使用する';
+          suggestion = 'このウェブサイトはアクセス制限が設定されています。\n\n✅ 解決方法:\n1. 「⚡ アクセス強化モード」をONにして再試行\n2. または、手動HTML入力モードを使用\n   → サイトで右クリック → 「ページのソースを表示」\n   → すべてコピー → 貼り付け\n   → ベースURLも必ず入力\n\nその他の方法:\n3. 別のブラウザでサイトを開いてソースコードを取得';
         } else if (firstError.code === 'ENOTFOUND') {
           errorCode = 'DNS_ERROR';
           userMessage = 'ウェブサイトが見つかりません';
@@ -325,11 +583,10 @@ app.post('/api/fetch-website', async (req, res) => {
       resolvedBaseUrl = `${targetUrl.protocol}//${targetUrl.host}`;
       
       // <base> タグを追加または更新（404エラー対策）
-      if ($('base').length === 0) {
-        $('head').prepend(`<base href="${resolvedBaseUrl}/">`);
-      } else {
-        $('base').attr('href', `${resolvedBaseUrl}/`);
-      }
+      // 既存のbaseタグを削除してから新しいものを追加（確実性を高める）
+      $('base').remove();
+      $('head').prepend(`<base href="${resolvedBaseUrl}/">`);
+      console.log(`🔗 Added <base> tag: ${resolvedBaseUrl}/`);
     } else {
       // 手動入力でbaseUrlがない場合は、既存のbaseタグを確認
       const existingBase = $('base').attr('href');
@@ -341,7 +598,15 @@ app.post('/api/fetch-website', async (req, res) => {
       }
     }
     
-    // エラーハンドリングスクリプトを追加（404/403エラーを無視）
+    // 既存のCSPメタタグを削除（競合防止）
+    $('meta[http-equiv="Content-Security-Policy"]').remove();
+    
+    // 寛容なCSPを追加（外部リソースを許可）
+    const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline';">`;
+    $('head').prepend(cspMeta);
+    console.log('🔒 Added permissive CSP meta tag');
+    
+    // エラーハンドリング + ナビゲーション防止スクリプトを追加
     const errorHandlingScript = `
       <script>
         // リソース読み込みエラーを無視
@@ -351,6 +616,40 @@ app.post('/api/fetch-website', async (req, res) => {
             console.warn('リソース読み込みエラーを無視:', e.target.src || e.target.href);
           }
         }, true);
+        
+        // iframe内でのみナビゲーションを防止（ダウンロードしたHTMLでは動作しない）
+        if (window.self !== window.top) {
+          // リンククリックを無効化
+          document.addEventListener('click', function(e) {
+            var target = e.target;
+            while (target && target.tagName !== 'A') {
+              target = target.parentElement;
+            }
+            if (target && target.tagName === 'A' && target.href) {
+              e.preventDefault();
+              console.log('リンククリックを防止:', target.href);
+            }
+          }, true);
+          
+          // フォーム送信を防止
+          document.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('フォーム送信を防止');
+          }, true);
+          
+          // window.location.href変更を防止（読み取りは許可）
+          var locationDescriptor = Object.getOwnPropertyDescriptor(window.location, 'href');
+          if (locationDescriptor && locationDescriptor.set) {
+            var originalSetter = locationDescriptor.set;
+            Object.defineProperty(window.location, 'href', {
+              get: locationDescriptor.get,
+              set: function(value) {
+                console.log('window.location.href変更を防止:', value);
+                // 実際には変更しない
+              }
+            });
+          }
+        }
       </script>
     `;
     $('head').append(errorHandlingScript);
@@ -538,13 +837,188 @@ app.post('/api/fetch-website', async (req, res) => {
       }
     });
 
+    // A/B テストツール・ボット検知スクリプトの除去
+    console.log('🔧 Removing A/B testing scripts and forced visibility...');
+    
+    // Phase 1: Shoplift関連のスタイルとスクリプトを削除
+    // Shopliftの非表示スタイルを削除
+    $('style').each((i, elem) => {
+      const styleContent = $(elem).html();
+      if (styleContent && styleContent.includes('shoplift-hide')) {
+        console.log('  ❌ Removed Shoplift hide style');
+        $(elem).remove();
+      }
+    });
+    
+    // Shopliftスクリプトを削除
+    $('script[src*="shoplift"]').remove();
+    $('script').each((i, elem) => {
+      const scriptContent = $(elem).html();
+      if (scriptContent && scriptContent.includes('shoplift')) {
+        console.log('  ❌ Removed inline Shoplift script');
+        $(elem).remove();
+      }
+    });
+    
+    // その他のA/Bテストツールを削除
+    const abTestTools = [
+      'optimizely',
+      'vwo',
+      'google-optimize',
+      'ab-test',
+      'split.io',
+      'kameleoon',
+      'launchdarkly',
+      'convert.com'
+    ];
+    
+    abTestTools.forEach(tool => {
+      const removed = $(`script[src*="${tool}"]`);
+      if (removed.length > 0) {
+        console.log(`  ❌ Removed ${tool} scripts (${removed.length})`);
+        removed.remove();
+      }
+    });
+    
+    // Phase 2: 強制表示CSSを追加
+    const forceVisibleCSS = `
+      <style id="force-visible-override">
+        /* A/Bテストツールによる非表示を強制上書き */
+        .shoplift-hide,
+        .ab-test-hide,
+        .optimize-hide,
+        [class*="hide"][class*="test"] {
+          opacity: 1 !important;
+          visibility: visible !important;
+          display: block !important;
+        }
+        
+        /* インラインスタイルでopacity: 0が設定されている要素を上書き */
+        [style*="opacity: 0"],
+        [style*="opacity:0"] {
+          opacity: 1 !important;
+        }
+        
+        /* bodyやhtmlに適用されたhideクラスを上書き */
+        body[class*="hide"],
+        html[class*="hide"],
+        body[style*="opacity: 0"],
+        html[style*="opacity: 0"] {
+          opacity: 1 !important;
+          visibility: visible !important;
+        }
+        
+        /* その他の一般的な非表示パターン */
+        [data-test-hide="true"],
+        [data-ab-hidden="true"] {
+          opacity: 1 !important;
+          visibility: visible !important;
+          display: block !important;
+        }
+      </style>
+    `;
+    
+    $('head').append(forceVisibleCSS);
+    console.log('✅ Added force-visible CSS override');
+
+    // モバイル最適化の自動注入
+    console.log('📱 Adding mobile optimization...');
+    
+    // 1. Viewport メタタグを追加または更新
+    const existingViewport = $('meta[name="viewport"]');
+    if (existingViewport.length === 0) {
+      $('head').prepend('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">');
+      console.log('✅ Added viewport meta tag');
+    } else {
+      existingViewport.attr('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes');
+      console.log('✅ Updated viewport meta tag');
+    }
+    
+    // 2. モバイル対応CSSを追加
+    const mobileCSS = `
+      <style id="mobile-optimization">
+        /* モバイル最適化CSS */
+        @media (max-width: 768px) {
+          /* 基本的なレスポンシブ設定 */
+          body {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            overflow-x: hidden !important;
+          }
+          
+          /* 画像のレスポンシブ化 */
+          img {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+          
+          /* テーブルのレスポンシブ化 */
+          table {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            display: block !important;
+          }
+          
+          /* 固定幅要素の制限 */
+          * {
+            max-width: 100vw !important;
+          }
+          
+          /* フォントサイズの調整 */
+          body, p, div, span {
+            font-size: 16px !important;
+            line-height: 1.6 !important;
+          }
+          
+          /* ボタンやリンクのタップ領域拡大 */
+          a, button {
+            min-height: 44px !important;
+            min-width: 44px !important;
+            display: inline-block !important;
+          }
+          
+          /* 横スクロール防止 */
+          html, body {
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+          }
+          
+          /* iframe のレスポンシブ化 */
+          iframe {
+            max-width: 100% !important;
+          }
+        }
+      </style>
+    `;
+    
+    // 既存のモバイル最適化CSSを削除して新しいものを追加
+    $('#mobile-optimization').remove();
+    $('head').append(mobileCSS);
+    console.log('✅ Added mobile responsive CSS');
+
     html = $.html();
+
+    // 色抽出処理
+    console.log('🎨 Extracting colors from website...');
+    const topColors = extractTopColors($);
+    console.log(`✅ Extracted top ${topColors.length} colors:`, topColors);
+
+    // 一時的なIDを生成してHTMLを保存（プレビュー用）
+    const previewId = crypto.randomBytes(16).toString('hex');
+    tempHtmlStorage.set(previewId, {
+      html: html,
+      timestamp: Date.now(),
+      baseUrl: resolvedBaseUrl
+    });
+    console.log(`💾 Stored preview HTML with ID: ${previewId}`);
 
     const responseData = {
       success: true,
       html: html,
+      previewId: previewId, // クライアントがiframeで使用
       baseUrl: resolvedBaseUrl || 'N/A',
       fetchMethod: fetchMethod,
+      topColors: topColors, // 抽出した色情報を追加
       stats: {
         totalImages: imageUrls.length,
         domain: targetUrl ? targetUrl.hostname : 'manual-input'
@@ -591,6 +1065,358 @@ app.post('/api/fetch-website', async (req, res) => {
       error: userMessage,
       code: errorCode,
       details: error.message
+    });
+  }
+});
+
+// プレビュー用HTMLを配信するエンドポイント
+app.get('/api/preview/:previewId', (req, res) => {
+  const { previewId } = req.params;
+  
+  const data = tempHtmlStorage.get(previewId);
+  
+  if (!data) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Preview Not Found</title>
+      </head>
+      <body style="font-family: system-ui; padding: 40px; text-align: center;">
+        <h1>❌ プレビューが見つかりません</h1>
+        <p>このプレビューは期限切れか、存在しません。</p>
+        <p><small>プレビューは30分後に自動的に削除されます。</small></p>
+      </body>
+      </html>
+    `);
+  }
+  
+  console.log(`📺 Serving preview: ${previewId}`);
+  
+  // HTMLを配信（適切なContent-Typeヘッダーを設定）
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+  res.send(data.html);
+});
+
+// HTMLをクラウドホスティング（公開用）
+app.post('/api/host-html', async (req, res) => {
+  try {
+    const { html } = req.body;
+    
+    if (!html) {
+      return res.status(400).json({ 
+        error: 'HTMLが指定されていません',
+        code: 'MISSING_HTML'
+      });
+    }
+    
+    // ランダムなホストIDを生成（より長く、推測しにくいもの）
+    const hostId = crypto.randomBytes(24).toString('hex');
+    
+    // HTMLを保存（3日間）
+    hostedHtmlStorage.set(hostId, {
+      html: html,
+      timestamp: Date.now(),
+      accessCount: 0
+    });
+    
+    console.log(`☁️  Hosted HTML with ID: ${hostId} (expires in 3 days)`);
+    
+    // 公開URLを生成（サンドボックス環境対応）
+    // X-Forwarded-Hostヘッダーを優先的に使用（プロキシ環境）
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    
+    // デバッグログ
+    console.log('🔍 Headers:', {
+      'x-forwarded-host': req.get('x-forwarded-host'),
+      'x-forwarded-proto': req.get('x-forwarded-proto'),
+      'host': req.get('host'),
+      'protocol': req.protocol
+    });
+    
+    // サンドボックス環境の場合は常にHTTPSを使用
+    const finalProtocol = host.includes('sandbox.novita.ai') ? 'https' : protocol;
+    const publicUrl = `${finalProtocol}://${host}/view/${hostId}`;
+    
+    console.log(`🌐 Public URL generated: ${publicUrl}`);
+    
+    res.json({
+      success: true,
+      hostId: hostId,
+      url: publicUrl,
+      expiresIn: '3 days',
+      expiresInHours: 72,
+      message: 'HTMLを3日間公開しました'
+    });
+    
+  } catch (error) {
+    console.error('Error hosting HTML:', error.message);
+    res.status(500).json({
+      error: 'HTMLのホスティングに失敗しました',
+      details: error.message
+    });
+  }
+});
+
+// ホスティングされたHTMLを配信
+app.get('/view/:hostId', (req, res) => {
+  const { hostId } = req.params;
+  
+  const data = hostedHtmlStorage.get(hostId);
+  
+  if (!data) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Page Not Found</title>
+        <style>
+          body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 40px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+          }
+          .container {
+            background: white;
+            color: #333;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 500px;
+          }
+          h1 { margin-top: 0; color: #e74c3c; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>❌ ページが見つかりません</h1>
+          <p>このページは期限切れか、存在しません。</p>
+          <p><small>公開されたHTMLは3日後に自動的に削除されます。</small></p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  
+  // アクセスカウントを増加
+  data.accessCount++;
+  console.log(`🌐 Serving hosted HTML: ${hostId} (Access count: ${data.accessCount})`);
+  
+  // HTMLを配信
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // 1時間キャッシュ
+  res.send(data.html);
+});
+
+// SlackでHTMLを共有（旧エンドポイント - 後方互換性のため維持）
+app.post('/api/send-slack', async (req, res) => {
+  try {
+    const { webhookUrl, html, message } = req.body;
+    
+    if (!webhookUrl || !html) {
+      return res.status(400).json({ 
+        error: 'Webhook URLとHTMLが必要です',
+        code: 'MISSING_PARAMS'
+      });
+    }
+    
+    // HTMLをホスティング
+    const hostId = crypto.randomBytes(24).toString('hex');
+    hostedHtmlStorage.set(hostId, {
+      html: html,
+      timestamp: Date.now(),
+      accessCount: 0,
+      sharedVia: 'slack'
+    });
+    
+    // 公開URLを生成（サンドボックス環境対応）
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    
+    // サンドボックス環境の場合は常にHTTPSを使用
+    const finalProtocol = host.includes('sandbox.novita.ai') ? 'https' : protocol;
+    const publicUrl = `${finalProtocol}://${host}/view/${hostId}`;
+    
+    console.log(`💬 Slack send requested, URL: ${publicUrl}`);
+    
+    // Slackにメッセージを送信
+    const slackMessage = {
+      text: message || 'HTMLファイルを共有します',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*📄 HTMLファイルの共有*\n${message || 'Firework AIFAQ埋め込み済みのHTMLファイルです'}`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🔗 *リンク:* <${publicUrl}|HTMLを開く>\n⏰ *有効期限:* 24時間`
+          }
+        }
+      ]
+    };
+    
+    const response = await axios.post(webhookUrl, slackMessage, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.status === 200) {
+      res.json({
+        success: true,
+        message: 'Slackに送信しました',
+        url: publicUrl
+      });
+    } else {
+      throw new Error(`Slack API returned status ${response.status}`);
+    }
+    
+  } catch (error) {
+    console.error('Error sending to Slack:', error.message);
+    res.status(500).json({
+      error: 'Slack送信に失敗しました',
+      details: error.message,
+      suggestion: 'Webhook URLが正しいか確認してください'
+    });
+  }
+});
+
+// Slackに既にホスティング済みのURLを送信（新エンドポイント）
+app.post('/api/send-to-slack', async (req, res) => {
+  // 必ずJSONを返すように設定
+  res.setHeader('Content-Type', 'application/json');
+  
+  try {
+    const { webhookUrl, url, websiteUrl, message } = req.body;
+    
+    console.log('📥 Received Slack send request:', {
+      hasWebhookUrl: !!webhookUrl,
+      hasUrl: !!url,
+      websiteUrl: websiteUrl || 'N/A',
+      hasMessage: !!message
+    });
+    
+    if (!webhookUrl) {
+      console.warn('❌ Missing webhook URL');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Webhook URLが必要です',
+        code: 'MISSING_WEBHOOK_URL'
+      });
+    }
+    
+    if (!url) {
+      console.warn('❌ Missing hosting URL');
+      return res.status(400).json({ 
+        success: false,
+        error: 'ホスティングURLが必要です',
+        code: 'MISSING_HOSTING_URL'
+      });
+    }
+    
+    console.log(`💬 Sending to Slack - URL: ${url}, Website: ${websiteUrl || 'N/A'}`);
+    
+    // カスタムメッセージがある場合はそれを使用、なければデフォルトメッセージ
+    const displayMessage = message || 
+      (websiteUrl ? `${websiteUrl}用に生成したモックアップ画面が作成できました。` : 'Firework埋め込み済みのHTMLファイルです');
+    
+    // Slackにメッセージを送信
+    const slackMessage = {
+      text: displayMessage,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*📄 ${displayMessage}*`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🔗 *リンク:* <${url}|HTMLを開く>\n⏰ *有効期限:* 3日間`
+          }
+        }
+      ]
+    };
+    
+    console.log('📤 Sending message to Slack...');
+    
+    const response = await axios.post(webhookUrl, slackMessage, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000,
+      validateStatus: (status) => status < 500 // Don't throw on 4xx errors
+    });
+    
+    console.log(`📨 Slack response status: ${response.status}`);
+    
+    if (response.status === 200 || response.data === 'ok') {
+      console.log('✅ Slack送信成功');
+      return res.json({
+        success: true,
+        message: 'Slackに送信しました',
+        url: url
+      });
+    } else {
+      console.warn(`⚠️ Slack returned non-200 status: ${response.status}`);
+      throw new Error(`Slack API returned status ${response.status}`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error sending to Slack:', error.message);
+    console.error('Error details:', {
+      code: error.code,
+      response: error.response ? {
+        status: error.response.status,
+        data: error.response.data
+      } : 'No response'
+    });
+    
+    // より詳細なエラー情報を返す
+    let errorMessage = 'Slack送信に失敗しました';
+    let suggestion = 'Webhook URLが正しいか確認してください';
+    
+    if (error.response) {
+      errorMessage = `Slack APIがエラーを返しました (${error.response.status})`;
+      suggestion = JSON.stringify(error.response.data) || suggestion;
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = 'Slack APIへの接続がタイムアウトしました';
+      suggestion = 'ネットワーク接続を確認してください';
+    } else if (error.code === 'ENOTFOUND') {
+      errorMessage = 'Slack APIに接続できません';
+      suggestion = 'Webhook URLが正しいか確認してください';
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Slack APIへの接続が拒否されました';
+      suggestion = 'ネットワーク設定を確認してください';
+    }
+    
+    // 必ずJSONを返す
+    return res.status(500).json({
+      success: false,
+      error: errorMessage,
+      details: error.message,
+      suggestion: suggestion
     });
   }
 });
