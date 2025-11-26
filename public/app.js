@@ -1141,86 +1141,7 @@ function injectScript(element) {
         // iframe内のドキュメントを取得
         const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
         
-        // 中央配置用のコンテナを作成
-        const container = iframeDoc.createElement('div');
-        container.style.cssText = 'display: flex; justify-content: center; align-items: center; width: 100%; margin: 20px 0;';
-        
-        // 製品タイプに応じてスクリプトとエレメントを作成
-        const scriptTag = iframeDoc.createElement('script');
-        scriptTag.async = true;
-        scriptTag.type = 'text/javascript';
-        
-        if (productType === 'aifaq') {
-            // AIFAQ Assistantスクリプト
-            scriptTag.src = `https://asset.fwscripts.com/js/ava.js?business_id=${businessId}`;
-            
-            const fwAvaElement = iframeDoc.createElement('fw-ava');
-            fwAvaElement.setAttribute('domain_assistant_id', domainAssistantId);
-            fwAvaElement.setAttribute('layout', 'faq');
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwAvaElement);
-        } else if (productType === 'storyblock') {
-            // Story Blockスクリプト
-            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
-            
-            const fwEmbedFeed = iframeDoc.createElement('fw-embed-feed');
-            fwEmbedFeed.setAttribute('channel', channelName);
-            fwEmbedFeed.setAttribute('playlist', playlistName);
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwEmbedFeed);
-        } else if (productType === 'carousel') {
-            // カルーセルスクリプト
-            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
-            
-            const fwEmbedFeed = iframeDoc.createElement('fw-embed-feed');
-            fwEmbedFeed.setAttribute('channel', channelName);
-            fwEmbedFeed.setAttribute('playlist', playlistName);
-            fwEmbedFeed.setAttribute('mode', 'row');
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwEmbedFeed);
-        } else if (productType === 'circlestories') {
-            // サークルストーリーズスクリプト
-            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
-            
-            const fwStories = iframeDoc.createElement('fw-stories');
-            fwStories.setAttribute('channel', channelName);
-            fwStories.setAttribute('playlist', playlistName);
-            fwStories.setAttribute('thumbnail_shape', 'circle');
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwStories);
-        } else if (productType === 'floatingplayer') {
-            // フローティングプレーヤースクリプト
-            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
-            
-            const fwStoryblock = iframeDoc.createElement('fw-storyblock');
-            fwStoryblock.setAttribute('channel', channelName);
-            fwStoryblock.setAttribute('playlist', playlistName);
-            fwStoryblock.setAttribute('mode', 'pinned');
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwStoryblock);
-        } else if (productType === 'horizontalplayer') {
-            // ホリゾンタルプレーヤースクリプト
-            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
-            
-            const fwPlayer = iframeDoc.createElement('fw-player');
-            fwPlayer.setAttribute('style', 'width:100%;aspect-ratio: 16 / 9 ');
-            fwPlayer.setAttribute('channel', channelName);
-            fwPlayer.setAttribute('playlist', playlistName);
-            
-            container.appendChild(scriptTag);
-            container.appendChild(fwPlayer);
-        }
-        
-        // コンテナに識別用のIDを追加（キャンセル機能用）
-        container.id = 'fw-injected-script-' + Date.now();
-        container.setAttribute('data-product-type', productType);
-        
-        // クリックされた要素を見つける
+        // クリックされた要素を見つける（サイズ計算のため先に実行）
         // ブロック要素（div, section, article等）を優先的に選択
         let targetElement = element;
         const blockElements = ['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'HEADER', 'FOOTER', 'ASIDE', 'NAV'];
@@ -1234,7 +1155,84 @@ function injectScript(element) {
             }
         }
         
-        // ブロックの中央に挿入
+        // 周辺要素を分析して最適なサイズを計算
+        const sizeInfo = calculateOptimalSize(targetElement, iframeDoc);
+        
+        // 中央配置用のコンテナを作成
+        const container = iframeDoc.createElement('div');
+        container.style.cssText = 'display: flex; justify-content: center; align-items: center; width: 100%; margin: 20px 0;';
+        
+        // 製品タイプに応じてスクリプトとエレメントを作成
+        const scriptTag = iframeDoc.createElement('script');
+        scriptTag.async = true;
+        scriptTag.type = 'text/javascript';
+        
+        let fwElement = null;
+        
+        if (productType === 'aifaq') {
+            // AIFAQ Assistantスクリプト
+            scriptTag.src = `https://asset.fwscripts.com/js/ava.js?business_id=${businessId}`;
+            
+            fwElement = iframeDoc.createElement('fw-ava');
+            fwElement.setAttribute('domain_assistant_id', domainAssistantId);
+            fwElement.setAttribute('layout', 'faq');
+            
+        } else if (productType === 'storyblock') {
+            // Story Blockスクリプト
+            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
+            
+            fwElement = iframeDoc.createElement('fw-embed-feed');
+            fwElement.setAttribute('channel', channelName);
+            fwElement.setAttribute('playlist', playlistName);
+            
+        } else if (productType === 'carousel') {
+            // カルーセルスクリプト
+            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
+            
+            fwElement = iframeDoc.createElement('fw-embed-feed');
+            fwElement.setAttribute('channel', channelName);
+            fwElement.setAttribute('playlist', playlistName);
+            fwElement.setAttribute('mode', 'row');
+            
+        } else if (productType === 'circlestories') {
+            // サークルストーリーズスクリプト
+            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
+            
+            fwElement = iframeDoc.createElement('fw-stories');
+            fwElement.setAttribute('channel', channelName);
+            fwElement.setAttribute('playlist', playlistName);
+            fwElement.setAttribute('thumbnail_shape', 'circle');
+            
+        } else if (productType === 'floatingplayer') {
+            // フローティングプレーヤースクリプト
+            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
+            
+            fwElement = iframeDoc.createElement('fw-storyblock');
+            fwElement.setAttribute('channel', channelName);
+            fwElement.setAttribute('playlist', playlistName);
+            fwElement.setAttribute('mode', 'pinned');
+            
+        } else if (productType === 'horizontalplayer') {
+            // ホリゾンタルプレーヤースクリプト
+            scriptTag.src = '//asset.fwcdn3.com/js/embed-feed.js';
+            
+            fwElement = iframeDoc.createElement('fw-player');
+            fwElement.setAttribute('channel', channelName);
+            fwElement.setAttribute('playlist', playlistName);
+        }
+        
+        // スマートサイジングを適用
+        if (fwElement) {
+            applySmartSizing(fwElement, productType, sizeInfo);
+            container.appendChild(scriptTag);
+            container.appendChild(fwElement);
+        }
+        
+        // コンテナに識別用のIDを追加（キャンセル機能用）
+        container.id = 'fw-injected-script-' + Date.now();
+        container.setAttribute('data-product-type', productType);
+        
+        // ブロックの中央に挿入（targetElementは既に上で計算済み）
         if (targetElement && targetElement.parentNode) {
             // 子要素の数を取得
             const childCount = targetElement.children.length;
@@ -2498,3 +2496,162 @@ if (cancelDeleteBtn) {
 }
 
 console.log('✅ Delete mode functionality initialized');
+
+// ==========================================
+// 周辺要素を分析して最適なサイズを計算
+// ==========================================
+
+function calculateOptimalSize(targetElement, iframeDoc) {
+    console.log('📐 Calculating optimal size for Firework widget...');
+    
+    try {
+        // 親要素のサイズを取得
+        const parentWidth = targetElement.offsetWidth || targetElement.clientWidth;
+        const parentHeight = targetElement.offsetHeight || targetElement.clientHeight;
+        
+        console.log('📏 Parent element size:', parentWidth, 'x', parentHeight);
+        
+        // 兄弟要素のサイズを分析
+        const siblings = Array.from(targetElement.children || []);
+        const siblingWidths = siblings
+            .map(el => el.offsetWidth || el.clientWidth)
+            .filter(w => w > 0);
+        const siblingHeights = siblings
+            .map(el => el.offsetHeight || el.clientHeight)
+            .filter(h => h > 0);
+        
+        // 平均サイズを計算
+        const avgSiblingWidth = siblingWidths.length > 0 
+            ? siblingWidths.reduce((a, b) => a + b, 0) / siblingWidths.length 
+            : parentWidth;
+        const avgSiblingHeight = siblingHeights.length > 0 
+            ? siblingHeights.reduce((a, b) => a + b, 0) / siblingHeights.length 
+            : 300;
+        
+        console.log('📊 Average sibling size:', avgSiblingWidth, 'x', avgSiblingHeight);
+        
+        // 最適な幅を決定（親要素の80-95%、または兄弟要素の平均）
+        let optimalWidth = Math.min(
+            parentWidth * 0.95,  // 親要素の95%まで
+            Math.max(
+                avgSiblingWidth,  // 兄弟要素の平均
+                parentWidth * 0.8  // 最低でも親の80%
+            )
+        );
+        
+        // 最小・最大幅の制限
+        optimalWidth = Math.max(280, Math.min(optimalWidth, 1200));
+        
+        // ビューポート幅も考慮
+        const viewportWidth = iframeDoc.documentElement.clientWidth || 1024;
+        if (optimalWidth > viewportWidth * 0.95) {
+            optimalWidth = viewportWidth * 0.95;
+        }
+        
+        // 最適な高さを決定
+        let optimalHeight = Math.min(
+            avgSiblingHeight * 1.2,  // 兄弟要素の120%程度
+            600  // 最大600px
+        );
+        optimalHeight = Math.max(250, optimalHeight);  // 最小250px
+        
+        // コンテナの幅に基づいてレスポンシブ調整
+        const isNarrow = optimalWidth < 400;
+        const isMedium = optimalWidth >= 400 && optimalWidth < 768;
+        const isWide = optimalWidth >= 768;
+        
+        // 製品タイプごとの調整係数
+        const sizeAdjustments = {
+            storyblock: { widthFactor: 1.0, heightFactor: 1.0 },
+            carousel: { widthFactor: 1.0, heightFactor: 0.8 },
+            circlestories: { widthFactor: 1.0, heightFactor: 0.6 },
+            floatingplayer: { widthFactor: 0.7, heightFactor: 1.0 },
+            horizontalplayer: { widthFactor: 1.0, heightFactor: 0.6 },
+            aifaq: { widthFactor: 0.9, heightFactor: 1.2 }
+        };
+        
+        const result = {
+            width: Math.round(optimalWidth),
+            height: Math.round(optimalHeight),
+            maxWidth: Math.round(parentWidth * 0.95),
+            isNarrow,
+            isMedium,
+            isWide,
+            parentWidth,
+            viewportWidth,
+            sizeAdjustments
+        };
+        
+        console.log('✅ Optimal size calculated:', result);
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error calculating optimal size:', error);
+        // フォールバック: デフォルトサイズ
+        return {
+            width: 800,
+            height: 400,
+            maxWidth: 1200,
+            isNarrow: false,
+            isMedium: true,
+            isWide: false,
+            parentWidth: 1024,
+            viewportWidth: 1024,
+            sizeAdjustments: {}
+        };
+    }
+}
+
+// Firework要素にスマートサイズを適用
+function applySmartSizing(fwElement, productType, sizeInfo) {
+    const adjustment = sizeInfo.sizeAdjustments[productType] || { widthFactor: 1.0, heightFactor: 1.0 };
+    
+    // 製品タイプに応じた幅調整
+    const adjustedWidth = Math.round(sizeInfo.width * adjustment.widthFactor);
+    const adjustedHeight = Math.round(sizeInfo.height * adjustment.heightFactor);
+    
+    // max-widthで親要素をはみ出さないように
+    const maxWidth = sizeInfo.maxWidth;
+    
+    // スタイルを適用
+    const styles = [];
+    
+    // 製品タイプごとのスタイル
+    if (productType === 'horizontalplayer') {
+        // Horizontal Playerは16:9のアスペクト比を維持
+        styles.push(`width: 100%`);
+        styles.push(`max-width: ${adjustedWidth}px`);
+        styles.push(`aspect-ratio: 16 / 9`);
+    } else if (productType === 'carousel' || productType === 'storyblock') {
+        // CarouselとStory Blockは横幅を最大化
+        styles.push(`width: 100%`);
+        styles.push(`max-width: ${adjustedWidth}px`);
+        styles.push(`min-height: ${adjustedHeight}px`);
+    } else if (productType === 'circlestories') {
+        // Circle Storiesはコンパクトに
+        styles.push(`width: 100%`);
+        styles.push(`max-width: ${adjustedWidth}px`);
+        styles.push(`height: auto`);
+    } else if (productType === 'floatingplayer') {
+        // Floating Playerは固定位置なのでサイズ指定なし
+        styles.push(`width: auto`);
+    } else if (productType === 'aifaq') {
+        // AIFAQは縦長が良い
+        styles.push(`width: 100%`);
+        styles.push(`max-width: ${adjustedWidth}px`);
+        styles.push(`min-height: ${adjustedHeight}px`);
+    }
+    
+    // レスポンシブ対応
+    if (sizeInfo.isNarrow) {
+        styles.push(`font-size: 14px`);  // 小さい画面では文字サイズを調整
+    }
+    
+    const styleString = styles.join('; ');
+    fwElement.setAttribute('style', styleString);
+    
+    console.log(`🎨 Applied smart sizing to ${productType}:`, styleString);
+    
+    return styleString;
+}
+
