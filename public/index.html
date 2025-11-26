@@ -6,6 +6,7 @@
     <title>ウェブサイト複写＆スクリプト埋め込みツール</title>
     <link rel="stylesheet" href="styles.css">
     <script src="translations.js"></script>
+    <script src="japanese-fonts.js"></script>
 </head>
 <body>
     <div class="container">
@@ -308,6 +309,18 @@
                     スクリプトを埋め込みたい位置をクリックしてください。
                     クリックした場所にFirework ウィジェットが埋め込まれます。
                 </p>
+            </div>
+
+            <!-- フォント選択パネル -->
+            <div class="color-picker-panel" style="margin-bottom: 20px;">
+                <h3>📝 フォント選択（プレビュー用）</h3>
+                <p class="color-picker-desc">プレビュー画面に適用するフォントを選択できます：</p>
+                <div class="form-group" style="margin: 0;">
+                    <select id="font-select" style="width: 100%; max-width: 400px; padding: 12px; font-size: 16px; border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; background: rgba(255,255,255,0.9); cursor: pointer;">
+                        <option value="" disabled selected>ふぉんと・フォント・Font！？</option>
+                    </select>
+                    <small style="color: rgba(255,255,255,0.9); margin-top: 8px;">💡 Google Fontsの日本語対応フォントから選択可能。選択すると即座にプレビューに反映されます。</small>
+                </div>
             </div>
 
             <!-- 色選択パネル -->
