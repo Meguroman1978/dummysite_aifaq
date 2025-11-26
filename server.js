@@ -476,6 +476,19 @@ app.post('/api/fetch-website', async (req, res) => {
             await page.setUserAgent(googlebotUA);
             console.log('🤖 User-Agent: Googlebot');
             
+            // Cloudflare対策: 追加のブラウザヘッダーを設定
+            await page.setExtraHTTPHeaders({
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Cache-Control': 'max-age=0',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+              'Upgrade-Insecure-Requests': '1'
+            });
+            
             // ビューポート設定
             await page.setViewport({ width: 1920, height: 1080 });
             
@@ -489,8 +502,8 @@ app.post('/api/fetch-website', async (req, res) => {
               timeout: 30000
             });
             
-            // JavaScriptが完全に実行されるまで待機
-            await page.waitForTimeout(2000);
+            // JavaScriptが完全に実行されるまで待機（Cloudflare対策で少し長めに）
+            await page.waitForTimeout(3000);
             
             // ページのHTMLを取得
             html = await page.content();

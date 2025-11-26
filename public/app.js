@@ -1406,12 +1406,42 @@ function showSuccessScreen(embeddedCode) {
 }
 
 // 最終プレビューを表示
-function showFinalPreview() {
+async function showFinalPreview() {
     successSection.style.display = 'none';
     previewSection.style.display = 'block';
     
-    // クリーンアップされたHTMLをプレビュー
-    websitePreview.srcdoc = currentHtml;
+    // スクリプト埋め込み後のHTMLをサーバーに送信して新しいプレビューIDを取得
+    // これにより画像プロキシが正しく適用される
+    try {
+        const response = await fetch('/api/fetch-website', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                manualHtml: currentHtml,
+                baseUrl: websiteUrl && websiteUrl !== '手動入力' ? websiteUrl : null,
+                proxyImages: true
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.previewId) {
+            // 新しいプレビューIDを使用してサーバー経由で表示
+            window.currentPreviewId = data.previewId;
+            websitePreview.src = `/api/preview/${data.previewId}`;
+            console.log('✅ 埋め込み後のHTMLをサーバー経由でプレビュー:', data.previewId);
+        } else {
+            // フォールバック: srcdocを使用
+            websitePreview.srcdoc = currentHtml;
+            console.warn('⚠️ プレビューID取得失敗、srcdocにフォールバック');
+        }
+    } catch (error) {
+        console.error('❌ プレビュー更新エラー:', error);
+        // フォールバック: srcdocを使用
+        websitePreview.srcdoc = currentHtml;
+    }
     
     // ツールバーを更新
     document.querySelector('.toolbar h2').textContent = '最終プレビュー（Firework AIFAQ埋め込み済み）';
