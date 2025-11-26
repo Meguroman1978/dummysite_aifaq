@@ -470,11 +470,11 @@ app.post('/api/fetch-website', async (req, res) => {
           try {
             const page = await browser.newPage();
             
-            // User-AgentをGooglebotに設定（robots.txt対策）
-            // 多くのサイトがGooglebotにはCSS/JS/画像へのアクセスを許可している
-            const googlebotUA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
-            await page.setUserAgent(googlebotUA);
-            console.log('🤖 User-Agent: Googlebot');
+            // Cloudflare対策: 通常のChromeブラウザのUser-Agentを使用
+            // Googlebotだとブロックされる可能性があるため、実際のブラウザを模倣
+            const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+            await page.setUserAgent(chromeUA);
+            console.log('🌐 User-Agent: Chrome (Cloudflare bypass)');
             
             // Cloudflare対策: 追加のブラウザヘッダーを設定
             await page.setExtraHTTPHeaders({
@@ -482,6 +482,9 @@ app.post('/api/fetch-website', async (req, res) => {
               'Accept-Encoding': 'gzip, deflate, br',
               'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
               'Cache-Control': 'max-age=0',
+              'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+              'Sec-Ch-Ua-Mobile': '?0',
+              'Sec-Ch-Ua-Platform': '"Windows"',
               'Sec-Fetch-Dest': 'document',
               'Sec-Fetch-Mode': 'navigate',
               'Sec-Fetch-Site': 'none',
@@ -502,8 +505,9 @@ app.post('/api/fetch-website', async (req, res) => {
               timeout: 30000
             });
             
-            // JavaScriptが完全に実行されるまで待機（Cloudflare対策で少し長めに）
-            await page.waitForTimeout(3000);
+            // Cloudflare対策: 長めに待機（JavaScriptチャレンジの完了を待つ）
+            console.log('⏳ Cloudflareチャレンジ完了を待機中...');
+            await page.waitForTimeout(5000);
             
             // ページのHTMLを取得
             html = await page.content();

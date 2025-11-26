@@ -11,6 +11,8 @@ let selectedColor = null; // 選択された色
 let availableColors = []; // 利用可能な色のリスト
 let selectedProducts = ['aifaq']; // デフォルトはAIFAQ Assistant
 let injectedScripts = []; // 埋め込まれたスクリプトのコンテナIDを追跡
+let isDeleteMode = false; // 要素削除モードの状態
+let deletedElements = []; // 削除された要素を追跡（復元用）
 // currentLanguage is defined in translations.js - do not redefine here
 
 // 共有設定
@@ -35,6 +37,8 @@ const btnLoading = document.querySelector('.btn-loading');
 const backBtn = document.getElementById('back-btn');
 const downloadBtn = document.getElementById('download-btn');
 const cancelEmbedBtn = document.getElementById('cancel-embed-btn');
+const deleteModeBtn = document.getElementById('delete-mode-btn');
+const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
 const websitePreview = document.getElementById('website-preview');
 const manualHtmlInput = document.getElementById('manual-html');
 const manualBaseUrlInput = document.getElementById('manual-base-url');
@@ -2319,3 +2323,178 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('❌ Language select element not found!');
     }
 });
+
+// ==========================================
+// 要素削除モード機能
+// ==========================================
+
+// 削除モードの開始
+function startDeleteMode() {
+    isDeleteMode = true;
+    deleteModeBtn.style.display = 'none';
+    cancelDeleteBtn.style.display = 'inline-block';
+    
+    try {
+        const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
+        
+        // 削除モード用のスタイルを追加
+        const deleteStyles = iframeDoc.createElement('style');
+        deleteStyles.id = 'fw-delete-mode-styles';
+        deleteStyles.textContent = `
+            .fw-delete-hover {
+                outline: 3px solid #ff4444 !important;
+                outline-offset: 2px !important;
+                cursor: pointer !important;
+                position: relative !important;
+            }
+            .fw-delete-hover::before {
+                content: "🗑️ クリックして削除";
+                position: absolute;
+                top: -25px;
+                left: 0;
+                background: #ff4444;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+                z-index: 10000;
+                white-space: nowrap;
+            }
+        `;
+        iframeDoc.head.appendChild(deleteStyles);
+        
+        // マウスオーバーでハイライト
+        iframeDoc.addEventListener('mouseover', handleDeleteHover, true);
+        iframeDoc.addEventListener('mouseout', handleDeleteUnhover, true);
+        iframeDoc.addEventListener('click', handleDeleteClick, true);
+        
+        showSuccess('削除モード開始', '削除したい要素をクリックしてください。親要素まで遡って選択できます。');
+    } catch (e) {
+        console.error('❌ Delete mode start error:', e);
+        showError('削除モードエラー', '削除モードの開始に失敗しました', e.message);
+    }
+}
+
+// 削除モードの終了
+function endDeleteMode() {
+    isDeleteMode = false;
+    deleteModeBtn.style.display = 'inline-block';
+    cancelDeleteBtn.style.display = 'none';
+    
+    try {
+        const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
+        
+        // 削除モード用のスタイルを削除
+        const deleteStyles = iframeDoc.getElementById('fw-delete-mode-styles');
+        if (deleteStyles) {
+            deleteStyles.remove();
+        }
+        
+        // イベントリスナーを削除
+        iframeDoc.removeEventListener('mouseover', handleDeleteHover, true);
+        iframeDoc.removeEventListener('mouseout', handleDeleteUnhover, true);
+        iframeDoc.removeEventListener('click', handleDeleteClick, true);
+        
+        // ホバークラスを削除
+        iframeDoc.querySelectorAll('.fw-delete-hover').forEach(el => {
+            el.classList.remove('fw-delete-hover');
+        });
+        
+        console.log('✅ Delete mode ended');
+    } catch (e) {
+        console.error('❌ Delete mode end error:', e);
+    }
+}
+
+// マウスオーバーハンドラー
+function handleDeleteHover(e) {
+    if (!isDeleteMode) return;
+    
+    const target = e.target;
+    // body, html, script, styleは除外
+    if (!target || target.tagName === 'BODY' || target.tagName === 'HTML' || 
+        target.tagName === 'SCRIPT' || target.tagName === 'STYLE') {
+        return;
+    }
+    
+    target.classList.add('fw-delete-hover');
+}
+
+// マウスアウトハンドラー
+function handleDeleteUnhover(e) {
+    if (!isDeleteMode) return;
+    
+    const target = e.target;
+    if (target) {
+        target.classList.remove('fw-delete-hover');
+    }
+}
+
+// クリックハンドラー（削除実行）
+function handleDeleteClick(e) {
+    if (!isDeleteMode) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const target = e.target;
+    
+    // body, html, script, styleは削除不可
+    if (!target || target.tagName === 'BODY' || target.tagName === 'HTML' || 
+        target.tagName === 'SCRIPT' || target.tagName === 'STYLE') {
+        showError('削除エラー', 'この要素は削除できません');
+        return;
+    }
+    
+    // Fireworkの埋め込みスクリプトは削除不可
+    if (target.id && target.id.startsWith('fw-injected-script-')) {
+        showError('削除エラー', 'Firework埋め込みスクリプトは削除できません');
+        return;
+    }
+    
+    // 確認ダイアログ
+    const tagInfo = `${target.tagName}${target.className ? '.' + target.className.split(' ').join('.') : ''}${target.id ? '#' + target.id : ''}`;
+    if (!confirm(`この要素を削除しますか？\n\n${tagInfo}\n\n親要素を削除する場合は「キャンセル」を押してください。`)) {
+        return;
+    }
+    
+    try {
+        // 削除前に情報を保存（復元用）
+        const deletedInfo = {
+            element: target.cloneNode(true),
+            parent: target.parentNode,
+            nextSibling: target.nextSibling,
+            tagInfo: tagInfo
+        };
+        deletedElements.push(deletedInfo);
+        
+        // 要素を削除
+        target.remove();
+        
+        // HTMLを更新
+        const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
+        currentHtml = '<!DOCTYPE html>\n' + iframeDoc.documentElement.outerHTML;
+        
+        console.log('✅ Element deleted:', tagInfo);
+        showSuccess('要素削除成功', `${tagInfo} を削除しました`);
+    } catch (error) {
+        console.error('❌ Delete error:', error);
+        showError('削除エラー', '要素の削除に失敗しました', error.message);
+    }
+}
+
+// 削除モードボタンのイベントリスナー
+if (deleteModeBtn) {
+    deleteModeBtn.addEventListener('click', () => {
+        startDeleteMode();
+    });
+}
+
+if (cancelDeleteBtn) {
+    cancelDeleteBtn.addEventListener('click', () => {
+        endDeleteMode();
+    });
+}
+
+console.log('✅ Delete mode functionality initialized');
