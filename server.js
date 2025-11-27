@@ -454,11 +454,15 @@ app.post('/api/fetch-website', async (req, res) => {
         // Puppeteerモードが有効な場合は、Stealth Puppeteerを使用
         if (usePuppeteer) {
           console.log('🥷 Puppeteer Stealthモードで取得中（完全な人間偽装）...');
+          console.log('📍 Target URL:', url);
+          
           const puppeteer = require('puppeteer-extra');
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
           
           // Stealthプラグインを適用（すべてのボット検知を回避）
-          puppeteer.use(StealthPlugin());
+          const stealthPlugin = StealthPlugin();
+          puppeteer.use(stealthPlugin);
+          console.log('✅ Stealth plugin loaded with', Object.keys(stealthPlugin._plugins || {}).length, 'evasions');
           
           const browser = await puppeteer.launch({
             headless: 'new',
@@ -519,41 +523,82 @@ app.post('/api/fetch-website', async (req, res) => {
             const realUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
             await page.setUserAgent(realUserAgent);
             
-            // リアルなブラウザヘッダーを設定
-            await page.setExtraHTTPHeaders({
+            // リアルなブラウザヘッダーを設定（Googleからの訪問を装う）
+            const headers = {
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
               'Accept-Encoding': 'gzip, deflate, br',
               'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
               'Cache-Control': 'max-age=0',
+              'Referer': 'https://www.google.com/',
               'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
               'Sec-Ch-Ua-Mobile': '?0',
               'Sec-Ch-Ua-Platform': '"Windows"',
               'Sec-Fetch-Dest': 'document',
               'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-Site': 'cross-site',
               'Sec-Fetch-User': '?1',
-              'Upgrade-Insecure-Requests': '1',
-              'DNT': '1'
-            });
+              'Upgrade-Insecure-Requests': '1'
+            };
+            await page.setExtraHTTPHeaders(headers);
+            console.log('📋 Headers set with Referer: https://www.google.com/');
             
-            // Cookieを設定（セッション保持）
+            // 事前にCookieを設定（セッション保持 + 同意）
             const parsedUrl = new URL(url);
-            await page.setCookie({
-              name: 'session_id',
-              value: 'user_' + Date.now() + '_' + Math.random().toString(36).substring(7),
-              domain: parsedUrl.hostname,
-              path: '/',
-              httpOnly: true,
-              secure: true
-            });
+            await page.setCookie(
+              {
+                name: 'session_id',
+                value: 'user_' + Date.now() + '_' + Math.random().toString(36).substring(7),
+                domain: parsedUrl.hostname,
+                path: '/',
+                httpOnly: true,
+                secure: true
+              },
+              {
+                name: 'cookie_consent',
+                value: 'accepted',
+                domain: parsedUrl.hostname,
+                path: '/',
+                secure: true
+              },
+              {
+                name: 'visitor_id',
+                value: Math.random().toString(36).substring(2, 15),
+                domain: parsedUrl.hostname,
+                path: '/',
+                secure: true
+              }
+            );
+            console.log('🍪 Cookies set: session, consent, visitor_id');
             
             console.log('🌐 ページにアクセス中（完全に人間として）...');
             
+            // レスポンスをキャプチャ
+            let pageResponse = null;
+            
             // ページにアクセス（実際の人間のように段階的に）
-            await page.goto(url, {
-              waitUntil: 'domcontentloaded',
-              timeout: 30000
-            });
+            try {
+              pageResponse = await page.goto(url, {
+                waitUntil: 'domcontentloaded',
+                timeout: 30000
+              });
+              
+              const status = pageResponse.status();
+              console.log('📊 HTTP Status:', status);
+              
+              if (status === 403) {
+                console.error('❌ 403 Forbidden detected even with Stealth mode');
+                console.log('🔍 Response headers:', await pageResponse.headers());
+                throw new Error('403 Forbidden - Server blocked access despite stealth mode');
+              }
+              
+              if (status >= 400) {
+                console.warn('⚠️ HTTP error status:', status);
+              }
+              
+            } catch (gotoError) {
+              console.error('❌ Page.goto error:', gotoError.message);
+              throw gotoError;
+            }
             
             // 初期待機（ページが読み込まれるのを待つ）
             await page.waitForTimeout(Math.random() * 1000 + 1500);
