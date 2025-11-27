@@ -886,6 +886,14 @@ function addInjectionStyles(doc) {
             transition: all 0.15s ease !important;
         }
         
+        /* 🛡️ VIDEO/IFRAME要素の保護 */
+        video, iframe, object, embed, .fw-protected-media, [data-fw-protected="true"] {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+        
         /* 現在のターゲット要素を強調表示 */
         .fw-current-target {
             outline: 3px solid #667eea !important;
@@ -1141,6 +1149,15 @@ function injectScript(element) {
         // iframe内のドキュメントを取得
         const iframeDoc = websitePreview.contentDocument || websitePreview.contentWindow.document;
         
+        // 🛡️ 重要：video/iframe要素を保護
+        // これらの要素が誤って削除されないように保護クラスを追加
+        const protectedElements = iframeDoc.querySelectorAll('video, iframe, object, embed');
+        protectedElements.forEach(el => {
+            el.classList.add('fw-protected-media');
+            el.setAttribute('data-fw-protected', 'true');
+            console.log('🛡️ Media element protected:', el.tagName, el.src || el.currentSrc);
+        });
+        
         // クリックされた要素を見つける（サイズ計算のため先に実行）
         // ブロック要素（div, section, article等）を優先的に選択
         let targetElement = element;
@@ -1281,8 +1298,13 @@ function injectScript(element) {
         currentHtml = '<!DOCTYPE html>\n' + iframeDoc.documentElement.outerHTML;
         isScriptInjected = true;
         
-        // 成功画面を表示
-        showSuccessScreen(script);
+        // 埋め込み完了通知を表示（成功画面は表示しない - 複数埋め込み対応）
+        showEmbedNotification(productType, injectedScripts.length);
+        
+        // インジェクションモードを再開（複数埋め込みを可能にする）
+        setTimeout(() => {
+            setupInjectionMode(iframeDoc);
+        }, 800);
     } catch (e) {
         console.error('❌ Script injection error:', e);
         showError('スクリプト埋め込みエラー', 'スクリプトの埋め込みに失敗しました', e.message);
@@ -1376,6 +1398,120 @@ function generateFireworkScript(productType = 'aifaq') {
     layout="faq"
 ></fw-ava>`;
     }
+}
+
+// 埋め込み完了通知を表示（複数埋め込み対応）
+function showEmbedNotification(productType, totalScripts) {
+    const productNames = {
+        aifaq: 'AIFAQ Assistant',
+        storyblock: 'Story Block',
+        carousel: 'Carousel',
+        circlestories: 'Circle Stories',
+        floatingplayer: 'Floating Player',
+        horizontalplayer: 'Horizontal Player'
+    };
+    const productName = productNames[productType] || productType;
+    
+    // 通知バナーを作成または更新
+    let notificationBar = document.getElementById('fw-embed-notification');
+    if (!notificationBar) {
+        notificationBar = document.createElement('div');
+        notificationBar.id = 'fw-embed-notification';
+        notificationBar.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 10001;
+            animation: slideInRight 0.4s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 320px;
+        `;
+        document.body.appendChild(notificationBar);
+        
+        // アニメーションCSS
+        if (!document.getElementById('fw-notification-styles')) {
+            const style = document.createElement('style');
+            style.id = 'fw-notification-styles';
+            style.textContent = `
+                @keyframes slideInRight {
+                    from {
+                        opacity: 0;
+                        transform: translateX(100px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateX(0);
+                    }
+                }
+                #fw-embed-notification .finish-btn {
+                    background: white;
+                    color: #667eea;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    margin-left: auto;
+                }
+                #fw-embed-notification .finish-btn:hover {
+                    transform: scale(1.05);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+    
+    notificationBar.innerHTML = `
+        <div style="flex: 1;">
+            <div style="font-size: 16px; margin-bottom: 4px;">✅ ${productName} 埋め込み完了</div>
+            <div style="font-size: 12px; opacity: 0.9;">
+                埋め込み済みスクリプト数: <strong>${totalScripts}個</strong>
+            </div>
+            <div style="font-size: 11px; opacity: 0.8; margin-top: 4px;">
+                続けて別の場所に埋め込むか、完了ボタンを押してください
+            </div>
+        </div>
+        <button class="finish-btn" onclick="finishEmbedding()">
+            完了
+        </button>
+    `;
+    
+    // 5秒後に通知を薄くする
+    setTimeout(() => {
+        notificationBar.style.opacity = '0.7';
+    }, 5000);
+}
+
+// 埋め込みを完了して成功画面へ
+window.finishEmbedding = function() {
+    // すべての埋め込みが完了したら成功画面を表示
+    const allEmbeddedCode = injectedScripts.map((id, index) => {
+        const container = websitePreview.contentDocument.getElementById(id);
+        if (container) {
+            const productType = container.getAttribute('data-product-type');
+            return `<!-- スクリプト ${index + 1}: ${productType} -->\n${generateFireworkScript(productType)}`;
+        }
+        return '';
+    }).join('\n\n');
+    
+    // 通知バーを削除
+    const notificationBar = document.getElementById('fw-embed-notification');
+    if (notificationBar) {
+        notificationBar.remove();
+    }
+    
+    showSuccessScreen(allEmbeddedCode);
 }
 
 // 成功画面を表示

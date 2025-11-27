@@ -834,6 +834,26 @@ app.post('/api/fetch-website', async (req, res) => {
           height: auto !important;
         }
         
+        /* 🛡️ VIDEO/IFRAME要素の保護（消えないようにする） */
+        video, iframe, object, embed, .fw-protected-media, [data-fw-protected="true"] {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          position: relative !important;
+          z-index: 1 !important;
+        }
+        
+        /* 動画コンテナの保護 */
+        video {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+        
+        /* iframeの保護 */
+        iframe {
+          max-width: 100% !important;
+        }
+        
         /* Fireworkウィジェットのコンテナスタイル */
         [id^="fw-injected-script-"] {
           display: block !important;
