@@ -460,9 +460,11 @@ app.post('/api/fetch-website', async (req, res) => {
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
           
           // Stealthプラグインを適用（すべてのボット検知を回避）
-          const stealthPlugin = StealthPlugin();
-          puppeteer.use(stealthPlugin);
-          console.log('✅ Stealth plugin loaded with', Object.keys(stealthPlugin._plugins || {}).length, 'evasions');
+          puppeteer.use(StealthPlugin());
+          
+          // プラグイン情報をログ出力
+          const pluginCount = puppeteer.plugins ? puppeteer.plugins.length : 0;
+          console.log('✅ Stealth plugin loaded, total plugins:', pluginCount);
           
           const browser = await puppeteer.launch({
             headless: 'new',
