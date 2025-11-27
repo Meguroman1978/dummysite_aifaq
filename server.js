@@ -463,18 +463,51 @@ app.post('/api/fetch-website', async (req, res) => {
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
               '--disable-accelerated-2d-canvas',
-              '--disable-gpu'
+              '--disable-gpu',
+              '--disable-blink-features=AutomationControlled',
+              '--window-size=1920,1080'
             ]
           });
           
           try {
             const page = await browser.newPage();
             
+            // 高度なボット検知対策
+            await page.evaluateOnNewDocument(() => {
+              // webdriver プロパティを削除
+              Object.defineProperty(navigator, 'webdriver', {
+                get: () => false,
+              });
+              
+              // Chrome runtime を追加
+              window.chrome = {
+                runtime: {},
+              };
+              
+              // permissions プロパティをオーバーライド
+              const originalQuery = window.navigator.permissions.query;
+              window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                  Promise.resolve({ state: Notification.permission }) :
+                  originalQuery(parameters)
+              );
+              
+              // plugins の長さを設定
+              Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+              });
+              
+              // languages を設定
+              Object.defineProperty(navigator, 'languages', {
+                get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+              });
+            });
+            
             // Cloudflare対策: 通常のChromeブラウザのUser-Agentを使用
             // Googlebotだとブロックされる可能性があるため、実際のブラウザを模倣
             const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
             await page.setUserAgent(chromeUA);
-            console.log('🌐 User-Agent: Chrome (Cloudflare bypass)');
+            console.log('🌐 User-Agent: Chrome (Advanced bot detection bypass)');
             
             // Cloudflare対策: 追加のブラウザヘッダーを設定
             await page.setExtraHTTPHeaders({
@@ -482,12 +515,14 @@ app.post('/api/fetch-website', async (req, res) => {
               'Accept-Encoding': 'gzip, deflate, br',
               'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
               'Cache-Control': 'max-age=0',
+              'DNT': '1',
+              'Referer': 'https://www.google.com/',
               'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
               'Sec-Ch-Ua-Mobile': '?0',
               'Sec-Ch-Ua-Platform': '"Windows"',
               'Sec-Fetch-Dest': 'document',
               'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-Site': 'cross-site',
               'Sec-Fetch-User': '?1',
               'Upgrade-Insecure-Requests': '1'
             });
@@ -505,8 +540,22 @@ app.post('/api/fetch-website', async (req, res) => {
               timeout: 30000
             });
             
+            // 高度なボット検知対策: ランダムなマウス移動とスクロールを追加
+            console.log('🖱️ 人間らしい動作をシミュレート中...');
+            await page.mouse.move(100, 100);
+            await page.waitForTimeout(500);
+            await page.mouse.move(200, 200);
+            await page.waitForTimeout(500);
+            await page.evaluate(() => {
+              window.scrollTo(0, 100);
+            });
+            await page.waitForTimeout(1000);
+            await page.evaluate(() => {
+              window.scrollTo(0, 0);
+            });
+            
             // Cloudflare対策: 長めに待機（JavaScriptチャレンジの完了を待つ）
-            console.log('⏳ Cloudflareチャレンジ完了を待機中...');
+            console.log('⏳ ボット検知チャレンジ完了を待機中...');
             await page.waitForTimeout(5000);
             
             // ページのHTMLを取得
