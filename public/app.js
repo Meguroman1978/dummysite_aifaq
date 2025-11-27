@@ -1653,6 +1653,60 @@ function downloadHtml() {
         }
     }
     
+    // 🔧 商品画像スライダー初期化スクリプトを追加
+    const sliderInitScript = `
+    <script>
+    // 🖼️ 商品画像スライダー（Slider Pro）の自動初期化
+    (function() {
+        console.log('🎬 Slider Pro 初期化を開始...');
+        
+        // jQueryとSlider Proが読み込まれるまで待機
+        function initSlider() {
+            if (typeof jQuery !== 'undefined' && typeof jQuery.fn.sliderPro !== 'undefined') {
+                jQuery(document).ready(function($) {
+                    // Slider Proの初期化
+                    if ($('.slider-pro').length > 0) {
+                        console.log('✅ Slider Pro を初期化中...');
+                        $('.slider-pro').sliderPro({
+                            width: '100%',
+                            height: 500,
+                            arrows: true,
+                            buttons: false,
+                            thumbnailsPosition: 'left',
+                            thumbnailWidth: 80,
+                            thumbnailHeight: 80,
+                            autoplay: false,
+                            fade: true,
+                            fadeOutPreviousSlide: true,
+                            fadeDuration: 500
+                        });
+                        console.log('✅ Slider Pro 初期化完了！');
+                    } else {
+                        console.warn('⚠️ .slider-pro 要素が見つかりません');
+                    }
+                });
+            } else {
+                // jQueryまたはSlider Proがまだ読み込まれていない場合は100ms後に再試行
+                setTimeout(initSlider, 100);
+            }
+        }
+        
+        // ページ読み込み完了後に初期化開始
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSlider);
+        } else {
+            initSlider();
+        }
+    })();
+    </script>
+    `;
+    
+    // </body>タグの直前にスライダー初期化スクリプトを挿入
+    if (htmlToDownload.includes('</body>')) {
+        htmlToDownload = htmlToDownload.replace('</body>', sliderInitScript + '\n</body>');
+        console.log('✅ スライダー初期化スクリプトを追加しました');
+    }
+    
     const blob = new Blob([htmlToDownload], { type: 'text/html; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1670,7 +1724,7 @@ function downloadHtml() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！`);
+    showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！\n商品画像スライダーの初期化スクリプトも含まれています。`);
 }
 
 // キャッシュをクリアする関数
