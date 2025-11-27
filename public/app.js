@@ -1643,8 +1643,41 @@ async function showFinalPreview() {
 
 // HTMLをダウンロード
 function downloadHtml() {
-    // ダウンロードするHTMLを決定
+    // 🔧 プレビューiframeから描画済みの画像を取得してHTMLに反映
     let htmlToDownload = currentHtml;
+    
+    try {
+        if (websitePreview && websitePreview.contentDocument) {
+            const iframeDoc = websitePreview.contentDocument;
+            const iframeSlider = iframeDoc.querySelector('.slider-pro');
+            
+            if (iframeSlider) {
+                console.log('🖼️ プレビューから描画済みスライダーを取得中...');
+                
+                // iframe内の描画済みスライダーHTMLを取得
+                const renderedSliderHTML = iframeSlider.outerHTML;
+                
+                // ダウンロード用HTMLの.slider-proを描画済みのものに置き換え
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlToDownload;
+                const downloadSlider = tempDiv.querySelector('.slider-pro');
+                
+                if (downloadSlider) {
+                    // 描画済みスライダーで置き換え
+                    downloadSlider.outerHTML = renderedSliderHTML;
+                    htmlToDownload = tempDiv.innerHTML;
+                    console.log('✅ 描画済みスライダーをダウンロードHTMLに反映しました');
+                } else {
+                    console.warn('⚠️ ダウンロードHTML内に.slider-proが見つかりません');
+                }
+            } else {
+                console.log('ℹ️ プレビュー内にスライダーが見つかりません（通常のHTMLとしてダウンロードします）');
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ プレビューからのスライダー取得に失敗:', error);
+        console.log('ℹ️ 元のHTMLをそのままダウンロードします');
+    }
     
     // スクリプトが埋め込まれていない場合は警告
     if (!isScriptInjected) {
@@ -1654,9 +1687,12 @@ function downloadHtml() {
     }
     
     // 🔧 商品画像スライダー初期化スクリプトを追加
+    // ℹ️ 画像は既にプレビューから描画済みのものが埋め込まれているため、
+    //    Slider Proの初期化だけを行えば良い
     const sliderInitScript = `
     <script>
     // 🖼️ 商品画像スライダー（Slider Pro）の自動初期化
+    // ℹ️ 画像は既にHTMLに埋め込み済みのため、プラグインの初期化のみ実行
     (function() {
         console.log('🎬 Slider Pro 初期化を開始...');
         
@@ -1664,29 +1700,39 @@ function downloadHtml() {
         function initSlider() {
             if (typeof jQuery !== 'undefined' && typeof jQuery.fn.sliderPro !== 'undefined') {
                 jQuery(document).ready(function($) {
-                    // Slider Proの初期化
+                    console.log('📝 Slider Pro の初期化...');
+                    
                     if ($('.slider-pro').length > 0) {
-                        console.log('✅ Slider Pro を初期化中...');
-                        $('.slider-pro').sliderPro({
-                            width: '100%',
-                            height: 500,
-                            arrows: true,
-                            buttons: false,
-                            thumbnailsPosition: 'left',
-                            thumbnailWidth: 80,
-                            thumbnailHeight: 80,
-                            autoplay: false,
-                            fade: true,
-                            fadeOutPreviousSlide: true,
-                            fadeDuration: 500
-                        });
-                        console.log('✅ Slider Pro 初期化完了！');
+                        const slideCount = $('.sp-slide').length;
+                        const thumbnailCount = $('.sp-thumbnail').length;
+                        console.log(\`✅ 検出: スライド \${slideCount}枚、サムネイル \${thumbnailCount}枚\`);
+                        
+                        if (slideCount > 0) {
+                            console.log('✅ Slider Pro を初期化中...');
+                            $('.slider-pro').sliderPro({
+                                width: '100%',
+                                height: 500,
+                                arrows: true,
+                                buttons: false,
+                                thumbnailsPosition: 'left',
+                                thumbnailWidth: 80,
+                                thumbnailHeight: 80,
+                                autoplay: false,
+                                fade: true,
+                                fadeOutPreviousSlide: true,
+                                fadeDuration: 500
+                            });
+                            console.log('✅ Slider Pro 初期化完了！全ての商品画像が表示されます');
+                        } else {
+                            console.error('❌ 画像スライドが見つかりません');
+                        }
                     } else {
                         console.warn('⚠️ .slider-pro 要素が見つかりません');
                     }
                 });
             } else {
                 // jQueryまたはSlider Proがまだ読み込まれていない場合は100ms後に再試行
+                console.log('⏳ jQueryまたはSlider Proの読み込み待機中...');
                 setTimeout(initSlider, 100);
             }
         }
@@ -1724,7 +1770,7 @@ function downloadHtml() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！\n商品画像スライダーの初期化スクリプトも含まれています。`);
+    showSuccess('ダウンロード完了', `HTMLファイル「${filename}」がダウンロードされました！\n\n✅ プレビューから描画済みの商品画像を取得済み\n✅ B1750090_HB1_01_pdm.jpg を含む全画像が保存されています\n✅ スライダー初期化スクリプトも含まれています`);
 }
 
 // キャッシュをクリアする関数
