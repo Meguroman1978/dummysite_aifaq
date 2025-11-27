@@ -894,6 +894,15 @@ function addInjectionStyles(doc) {
             pointer-events: auto !important;
         }
         
+        /* 🛡️ 商品画像スライダーの保護 */
+        #item-main, #goods-view, .slider-pro, .sp-slides-container,
+        .sp-mask, #itemDetailPhotoMain, .sp-slide, .sp-image-container,
+        .sp-thumbnails-container, .sp-thumbnail-container {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
         /* 現在のターゲット要素を強調表示 */
         .fw-current-target {
             outline: 3px solid #667eea !important;
@@ -1158,17 +1167,43 @@ function injectScript(element) {
             console.log('🛡️ Media element protected:', el.tagName, el.src || el.currentSrc);
         });
         
+        // 🛡️ 商品画像スライダー要素も保護
+        const sliderElements = iframeDoc.querySelectorAll('#item-main, #goods-view, .slider-pro, .sp-slides-container, .sp-mask, #itemDetailPhotoMain, .sp-slide, .sp-image-container, .sp-thumbnails-container');
+        sliderElements.forEach(el => {
+            el.classList.add('fw-protected-slider');
+            el.setAttribute('data-fw-slider-protected', 'true');
+            console.log('🛡️ Slider element protected:', el.tagName, el.id || el.className);
+        });
+        
         // クリックされた要素を見つける（サイズ計算のため先に実行）
         // ブロック要素（div, section, article等）を優先的に選択
         let targetElement = element;
         const blockElements = ['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'HEADER', 'FOOTER', 'ASIDE', 'NAV'];
         
-        // 親要素を遡ってブロック要素を探す
+        // 🚫 避けるべき商品画像スライダーのID/クラス
+        const sliderContainerIds = ['item-main', 'goods-view', 'itemDetailPhotoMain'];
+        const sliderContainerClasses = ['slider-pro', 'sp-slides-container', 'sp-mask', 'sp-thumbnails-container'];
+        
+        // 親要素を遡ってブロック要素を探す（スライダーコンテナは避ける）
         while (targetElement && !blockElements.includes(targetElement.tagName)) {
             targetElement = targetElement.parentElement;
             if (!targetElement || targetElement === iframeDoc.body) {
                 targetElement = element; // 見つからない場合は元の要素を使用
                 break;
+            }
+        }
+        
+        // 選択された要素が商品画像スライダーコンテナの場合は避ける
+        if (targetElement) {
+            const isSliderContainer = 
+                sliderContainerIds.includes(targetElement.id) ||
+                sliderContainerClasses.some(cls => targetElement.classList.contains(cls)) ||
+                targetElement.closest('.slider-pro, #item-main, #goods-view');
+            
+            if (isSliderContainer) {
+                console.warn('⚠️ Avoiding slider container, using parent or sibling');
+                // スライダーコンテナの場合は、その次の兄弟要素か親要素を使用
+                targetElement = targetElement.nextElementSibling || targetElement.parentElement || element;
             }
         }
         

@@ -854,14 +854,38 @@ app.post('/api/fetch-website', async (req, res) => {
           max-width: 100% !important;
         }
         
+        /* 🛡️ 商品画像スライダーの保護（最優先） */
+        #item-main, #goods-view, .slider-pro, .sp-slides-container, 
+        .sp-mask, #itemDetailPhotoMain, .sp-slide, .sp-image-container,
+        .sp-thumbnails-container, .sp-thumbnail-container {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+        
+        /* スライダーコンテナの固有スタイルを保護 */
+        .slider-pro {
+          position: relative !important;
+        }
+        
+        .sp-slides-container {
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        
+        .sp-mask {
+          position: relative !important;
+          overflow: hidden !important;
+        }
+        
         /* Fireworkウィジェットのコンテナスタイル */
         [id^="fw-injected-script-"] {
           display: block !important;
           width: 100% !important;
           max-width: 100% !important;
           margin: 20px auto !important;
-          overflow: hidden !important;
-          clear: both !important;
+          overflow: visible !important;
+          clear: none !important;
         }
         
         /* Firework要素のレスポンシブ対応 */
