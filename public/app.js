@@ -1415,6 +1415,15 @@ async function showFinalPreview() {
     // スクリプト埋め込み後のHTMLをサーバーに送信して新しいプレビューIDを取得
     // これにより画像プロキシが正しく適用される
     try {
+        // 埋め込み済みのHTMLから重要な情報を保持
+        const tempDoc = new DOMParser().parseFromString(currentHtml, 'text/html');
+        const hasFireworkScripts = tempDoc.querySelector('[id^="fw-injected-script-"]');
+        
+        console.log('📤 埋め込み後のHTMLをサーバーに送信中...', {
+            hasFireworkScripts: !!hasFireworkScripts,
+            htmlLength: currentHtml.length
+        });
+        
         const response = await fetch('/api/fetch-website', {
             method: 'POST',
             headers: {
@@ -1423,7 +1432,8 @@ async function showFinalPreview() {
             body: JSON.stringify({ 
                 manualHtml: currentHtml,
                 baseUrl: websiteUrl && websiteUrl !== '手動入力' ? websiteUrl : null,
-                proxyImages: true
+                proxyImages: true,
+                preserveLayout: true  // レイアウト保護フラグ
             })
         });
         
@@ -1434,10 +1444,15 @@ async function showFinalPreview() {
             window.currentPreviewId = data.previewId;
             websitePreview.src = `/api/preview/${data.previewId}`;
             console.log('✅ 埋め込み後のHTMLをサーバー経由でプレビュー:', data.previewId);
+            
+            // プレビューが読み込まれるまで待機
+            websitePreview.onload = function() {
+                console.log('✅ プレビュー読み込み完了');
+            };
         } else {
             // フォールバック: srcdocを使用
-            websitePreview.srcdoc = currentHtml;
             console.warn('⚠️ プレビューID取得失敗、srcdocにフォールバック');
+            websitePreview.srcdoc = currentHtml;
         }
     } catch (error) {
         console.error('❌ プレビュー更新エラー:', error);

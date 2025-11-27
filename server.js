@@ -530,6 +530,17 @@ app.post('/api/fetch-website', async (req, res) => {
             // ビューポート設定
             await page.setViewport({ width: 1920, height: 1080 });
             
+            // Cookieを設定（セッション保持）
+            const parsedUrl = new URL(url);
+            await page.setCookie({
+              name: 'session_id',
+              value: 'user_' + Date.now(),
+              domain: parsedUrl.hostname,
+              path: '/',
+              httpOnly: true,
+              secure: true
+            });
+            
             // リソース読み込みを有効化（画像、CSS、JSすべて）
             await page.setRequestInterception(false);
             
@@ -542,21 +553,21 @@ app.post('/api/fetch-website', async (req, res) => {
             
             // 高度なボット検知対策: ランダムなマウス移動とスクロールを追加
             console.log('🖱️ 人間らしい動作をシミュレート中...');
-            await page.mouse.move(100, 100);
-            await page.waitForTimeout(500);
-            await page.mouse.move(200, 200);
-            await page.waitForTimeout(500);
+            await page.mouse.move(Math.random() * 200 + 50, Math.random() * 200 + 50);
+            await page.waitForTimeout(Math.random() * 500 + 300);
+            await page.mouse.move(Math.random() * 400 + 100, Math.random() * 400 + 100);
+            await page.waitForTimeout(Math.random() * 700 + 400);
             await page.evaluate(() => {
-              window.scrollTo(0, 100);
+              window.scrollTo(0, Math.random() * 200 + 50);
             });
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(Math.random() * 1200 + 800);
             await page.evaluate(() => {
               window.scrollTo(0, 0);
             });
             
             // Cloudflare対策: 長めに待機（JavaScriptチャレンジの完了を待つ）
             console.log('⏳ ボット検知チャレンジ完了を待機中...');
-            await page.waitForTimeout(5000);
+            await page.waitForTimeout(6000);
             
             // ページのHTMLを取得
             html = await page.content();
@@ -722,6 +733,44 @@ app.post('/api/fetch-website', async (req, res) => {
       </script>
     `;
     $('head').append(errorHandlingScript);
+    
+    // レイアウト保護CSS（Fireworkスクリプト挿入後の崩れを防ぐ）
+    const layoutProtectionCSS = `
+      <style id="fw-layout-protection">
+        /* 画像の最大幅を保護 */
+        img {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+        
+        /* Fireworkウィジェットのコンテナスタイル */
+        [id^="fw-injected-script-"] {
+          display: block !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 20px auto !important;
+          overflow: hidden !important;
+          clear: both !important;
+        }
+        
+        /* Firework要素のレスポンシブ対応 */
+        fw-ava, fw-embed-feed, fw-stories, fw-storyblock, fw-player {
+          display: block !important;
+          max-width: 100% !important;
+        }
+        
+        /* レイアウトの保護 */
+        body, html {
+          overflow-x: hidden !important;
+        }
+        
+        /* フレックスボックスコンテナの保護 */
+        .flex, .flexbox, [class*="flex"], [style*="display: flex"] {
+          flex-wrap: wrap !important;
+        }
+      </style>
+    `;
+    $('head').append(layoutProtectionCSS);
     
     // ヘルパー関数：URLを絶対パスに変換
     function toAbsoluteUrl(url) {
