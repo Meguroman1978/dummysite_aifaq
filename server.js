@@ -451,10 +451,14 @@ app.post('/api/fetch-website', async (req, res) => {
       console.log(`Fetching: ${url} (proxyImages: ${proxyImages}, usePuppeteer: ${usePuppeteer})`);
       
       try {
-        // Puppeteerモードが有効な場合は、最初からPuppeteerを使用
+        // Puppeteerモードが有効な場合は、Stealth Puppeteerを使用
         if (usePuppeteer) {
-          console.log('🤖 Puppeteerモードで取得中...');
-          const puppeteer = require('puppeteer');
+          console.log('🥷 Puppeteer Stealthモードで取得中（完全な人間偽装）...');
+          const puppeteer = require('puppeteer-extra');
+          const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+          
+          // Stealthプラグインを適用（すべてのボット検知を回避）
+          puppeteer.use(StealthPlugin());
           
           const browser = await puppeteer.launch({
             headless: 'new',
@@ -462,46 +466,18 @@ app.post('/api/fetch-website', async (req, res) => {
               '--no-sandbox',
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
-              '--disable-accelerated-2d-canvas',
-              '--disable-gpu',
               '--disable-blink-features=AutomationControlled',
-              '--window-size=1920,1080'
+              '--disable-web-security',
+              '--disable-features=IsolateOrigins,site-per-process',
+              '--window-size=1920,1080',
+              '--start-maximized',
+              '--disable-infobars',
+              '--disable-notifications'
             ]
           });
           
           try {
             const page = await browser.newPage();
-            
-            // 高度なボット検知対策
-            await page.evaluateOnNewDocument(() => {
-              // webdriver プロパティを削除
-              Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-              });
-              
-              // Chrome runtime を追加
-              window.chrome = {
-                runtime: {},
-              };
-              
-              // permissions プロパティをオーバーライド
-              const originalQuery = window.navigator.permissions.query;
-              window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                  Promise.resolve({ state: Notification.permission }) :
-                  originalQuery(parameters)
-              );
-              
-              // plugins の長さを設定
-              Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-              });
-              
-              // languages を設定
-              Object.defineProperty(navigator, 'languages', {
-                get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-              });
-            });
             
             // Cloudflare対策: 通常のChromeブラウザのUser-Agentを使用
             // Googlebotだとブロックされる可能性があるため、実際のブラウザを模倣
@@ -527,52 +503,120 @@ app.post('/api/fetch-website', async (req, res) => {
               'Upgrade-Insecure-Requests': '1'
             });
             
-            // ビューポート設定
-            await page.setViewport({ width: 1920, height: 1080 });
+            // リアルなブラウザのビューポート設定（ランダムなウィンドウサイズ）
+            const viewportWidth = 1920;
+            const viewportHeight = 1080;
+            await page.setViewport({ 
+              width: viewportWidth, 
+              height: viewportHeight,
+              deviceScaleFactor: 1,
+              hasTouch: false,
+              isLandscape: true,
+              isMobile: false
+            });
+            
+            // 本物のブラウザのようなUser-Agentを設定
+            const realUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+            await page.setUserAgent(realUserAgent);
+            
+            // リアルなブラウザヘッダーを設定
+            await page.setExtraHTTPHeaders({
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Cache-Control': 'max-age=0',
+              'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+              'Sec-Ch-Ua-Mobile': '?0',
+              'Sec-Ch-Ua-Platform': '"Windows"',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+              'Upgrade-Insecure-Requests': '1',
+              'DNT': '1'
+            });
             
             // Cookieを設定（セッション保持）
             const parsedUrl = new URL(url);
             await page.setCookie({
               name: 'session_id',
-              value: 'user_' + Date.now(),
+              value: 'user_' + Date.now() + '_' + Math.random().toString(36).substring(7),
               domain: parsedUrl.hostname,
               path: '/',
               httpOnly: true,
               secure: true
             });
             
-            // リソース読み込みを有効化（画像、CSS、JSすべて）
-            await page.setRequestInterception(false);
+            console.log('🌐 ページにアクセス中（完全に人間として）...');
             
-            // ページにアクセス
-            console.log('🌐 Puppeteerでページを読み込み中...');
+            // ページにアクセス（実際の人間のように段階的に）
             await page.goto(url, {
-              waitUntil: 'networkidle2',
+              waitUntil: 'domcontentloaded',
               timeout: 30000
             });
             
-            // 高度なボット検知対策: ランダムなマウス移動とスクロールを追加
-            console.log('🖱️ 人間らしい動作をシミュレート中...');
-            await page.mouse.move(Math.random() * 200 + 50, Math.random() * 200 + 50);
-            await page.waitForTimeout(Math.random() * 500 + 300);
-            await page.mouse.move(Math.random() * 400 + 100, Math.random() * 400 + 100);
-            await page.waitForTimeout(Math.random() * 700 + 400);
+            // 初期待機（ページが読み込まれるのを待つ）
+            await page.waitForTimeout(Math.random() * 1000 + 1500);
+            
+            // 人間らしいマウス移動のシミュレーション（複数回）
+            console.log('🖱️ 自然な人間の動作をシミュレート中...');
+            
+            // 1回目：ページ上部をマウスで探索
+            await page.mouse.move(Math.random() * 300 + 100, Math.random() * 150 + 50);
+            await page.waitForTimeout(Math.random() * 400 + 200);
+            
+            // 2回目：中央付近に移動
+            await page.mouse.move(Math.random() * 500 + 400, Math.random() * 300 + 200);
+            await page.waitForTimeout(Math.random() * 600 + 300);
+            
+            // 3回目：別の場所に移動
+            await page.mouse.move(Math.random() * 700 + 200, Math.random() * 400 + 300);
+            await page.waitForTimeout(Math.random() * 500 + 250);
+            
+            // スクロールダウン（段階的に）
+            console.log('📜 ページをスクロール中（人間のように）...');
+            for (let i = 0; i < 3; i++) {
+              const scrollAmount = Math.random() * 300 + 200;
+              await page.evaluate((amount) => {
+                window.scrollBy(0, amount);
+              }, scrollAmount);
+              await page.waitForTimeout(Math.random() * 800 + 600);
+            }
+            
+            // ページの一部をホバー（リンクなど）
+            try {
+              const links = await page.$$('a');
+              if (links.length > 0) {
+                const randomLink = links[Math.floor(Math.random() * Math.min(links.length, 5))];
+                const box = await randomLink.boundingBox();
+                if (box) {
+                  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                  await page.waitForTimeout(Math.random() * 400 + 200);
+                }
+              }
+            } catch (e) {
+              // リンクのホバーが失敗しても続行
+            }
+            
+            // 上にスクロールバック
             await page.evaluate(() => {
-              window.scrollTo(0, Math.random() * 200 + 50);
-            });
-            await page.waitForTimeout(Math.random() * 1200 + 800);
-            await page.evaluate(() => {
-              window.scrollTo(0, 0);
+              window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+              });
             });
             
-            // Cloudflare対策: 長めに待機（JavaScriptチャレンジの完了を待つ）
-            console.log('⏳ ボット検知チャレンジ完了を待機中...');
-            await page.waitForTimeout(6000);
+            // ネットワークがアイドル状態になるまで待機
+            await page.waitForTimeout(3000);
+            
+            // 最終待機（JavaScriptの実行完了を確実に）
+            console.log('⏳ ページの完全な読み込みを待機中...');
+            await page.waitForTimeout(4000);
             
             // ページのHTMLを取得
             html = await page.content();
-            fetchMethod = 'puppeteer-googlebot';
-            console.log('✅ Puppeteerで取得成功（Googlebot UA）');
+            fetchMethod = 'puppeteer-stealth-human';
+            console.log('✅ Stealth Puppeteerで取得成功（完全な人間偽装）');
             
           } finally {
             await browser.close();
