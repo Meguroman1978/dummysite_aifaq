@@ -21,11 +21,13 @@
 3. 「Create application」→「Pages」→「Connect to Git」をクリック
 4. GitHubと連携し、`Meguroman1978/dummysite_aifaq`リポジトリを選択
 5. ビルド設定：
-   - **Framework preset**: なし
-   - **Build command**: （空欄）
+   - **Framework preset**: None
+   - **Build command**: **(Leave completely empty - do not enter anything)**
    - **Build output directory**: `public`
    - **Root directory**: `/`
-6. 「Save and Deploy」をクリック
+6. Click「Save and Deploy」
+
+**⚠️ IMPORTANT**: The Build command field must be **completely empty**. Do not enter any command.
 
 ### 3. デプロイ完了
 
@@ -84,10 +86,18 @@ wrangler pages dev public
 
 ## トラブルシューティング
 
+### Deployment fails with "wrangler deploy" error
+
+**Problem**: Build command is trying to run `wrangler deploy`
+**Solution**: 
+1. Go to Cloudflare Dashboard → Your Project → Settings → Builds
+2. Set "Build command" to **completely empty** (no text at all)
+3. Save and retry deployment
+
 ### デプロイが失敗する場合
 
 1. GitHubリポジトリが正しく連携されているか確認
-2. ビルド設定が正しいか確認（Build output directory: `public`）
+2. ビルド設定が正しいか確認（Build output directory: `public`, Build command: empty）
 
 ### APIが動作しない場合
 

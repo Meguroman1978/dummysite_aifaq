@@ -53,9 +53,11 @@ Cloudflare Pagesを使用すれば、サーバー費用なしで誰でもアク�
 | **Project name** | `dummysite-aifaq`（任意の名前） |
 | **Production branch** | `main` |
 | **Framework preset** | None（選択しない） |
-| **Build command** | （空欄のまま） |
+| **Build command** | **空欄のまま（何も入力しない）** |
 | **Build output directory** | `public` |
-| **Root directory** | `/` |
+| **Root directory** | `/`（デフォルトのまま） |
+
+**⚠️ 重要**: Build commandは**完全に空欄**にしてください。何も入力しないでください。
 
 ### ステップ5: デプロイ開始
 
@@ -154,7 +156,15 @@ wrangler pages dev public
 
 ## ❓ トラブルシューティング
 
-### デプロイが失敗する
+### デプロイが失敗する（wrangler deployエラー）
+
+- **原因**: Build commandに何か入力されている
+- **解決**: Build commandを**完全に空欄**にする
+  1. Cloudflareダッシュボード → プロジェクト → Settings → Builds
+  2. Build command を空欄に変更
+  3. Save and retry deployment
+
+### デプロイが失敗する（その他）
 
 - **原因**: Build output directoryの設定ミス
 - **解決**: Build output directoryが `public` になっているか確認
