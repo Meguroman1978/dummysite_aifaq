@@ -1729,8 +1729,14 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// ルートパスのフォールバック（静的ファイルが見つからない場合）
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // サーバー起動
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on http://0.0.0.0:${PORT}`);
   console.log(`Access the application at http://localhost:${PORT}`);
+  console.log(`Public directory: ${path.join(__dirname, 'public')}`);
 });
