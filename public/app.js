@@ -123,19 +123,36 @@ function showSuccess(title, message) {
 // AIFAQ URLからIDを抽出する関数
 function extractIdsFromAifaqUrl(url) {
     try {
-        // URLパターン: https://business.firework.com/business/{business_id}/ava/{domain_assistant_id}
-        const regex = /\/business\/([^\/]+)\/ava\/([^\/?#]+)/;
-        const match = url.match(regex);
+        // 新しいURLパターン（優先）: https://business.firework.com/business/{business_id}/ava/assistants/{domain_assistant_id}
+        // 例: https://business.firework.com/business/g201J5/ava/assistants/Nv7NLg/overview
+        const newPattern = /\/business\/([^\/]+)\/ava\/assistants\/([^\/?#]+)/;
+        const newMatch = url.match(newPattern);
         
-        if (match && match.length >= 3) {
+        if (newMatch && newMatch.length >= 3) {
+            console.log('✅ 新形式URL検出:', { businessId: newMatch[1], domainAssistantId: newMatch[2] });
             return {
-                businessId: match[1],
-                domainAssistantId: match[2]
+                businessId: newMatch[1],
+                domainAssistantId: newMatch[2]
             };
         }
+        
+        // 旧URLパターン（後方互換性）: https://business.firework.com/business/{business_id}/ava/{domain_assistant_id}
+        // 例: https://business.firework.com/business/g201J5/ava/Nv7NLg/overview
+        const oldPattern = /\/business\/([^\/]+)\/ava\/([^\/?#]+)/;
+        const oldMatch = url.match(oldPattern);
+        
+        if (oldMatch && oldMatch.length >= 3) {
+            console.log('✅ 旧形式URL検出:', { businessId: oldMatch[1], domainAssistantId: oldMatch[2] });
+            return {
+                businessId: oldMatch[1],
+                domainAssistantId: oldMatch[2]
+            };
+        }
+        
+        console.warn('⚠️ URLパターンが一致しません');
         return null;
     } catch (e) {
-        console.error('URL parsing error:', e);
+        console.error('❌ URL parsing error:', e);
         return null;
     }
 }
