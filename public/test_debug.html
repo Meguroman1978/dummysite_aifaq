@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Test</title>
+    <script src="translations.js"></script>
+    <script>
+        // Test script loading
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('=== DEBUG TEST ===');
+            console.log('1. translations object exists?', typeof translations !== 'undefined');
+            console.log('2. translations:', translations);
+            console.log('3. currentLanguage:', currentLanguage);
+            console.log('4. t function exists?', typeof t === 'function');
+            console.log('5. t("pageTitle"):', t('pageTitle'));
+            console.log('6. Switching to English...');
+            currentLanguage = 'en';
+            console.log('7. New language:', currentLanguage);
+            console.log('8. t("pageTitle"):', t('pageTitle'));
+        });
+    </script>
+</head>
+<body>
+    <h1>Debug Test - Check Console</h1>
+</body>
+</html>

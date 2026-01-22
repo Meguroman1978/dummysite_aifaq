@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>URL Extraction Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .fail { background-color: #f8d7da; border-color: #f5c6cb; }
+        .url { color: #0066cc; font-family: monospace; }
+        .result { margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🧪 AIFAQ URL Pattern Extraction Test</h1>
+    
+    <div id="results"></div>
+    
+    <script>
+        function extractIdsFromAifaqUrl(url) {
+            try {
+                // 新しいURLパターン（優先）
+                const newPattern = /\/business\/([^\/]+)\/ava\/assistants\/([^\/?#]+)/;
+                const newMatch = url.match(newPattern);
+                
+                if (newMatch && newMatch.length >= 3) {
+                    return {
+                        pattern: 'new',
+                        businessId: newMatch[1],
+                        domainAssistantId: newMatch[2]
+                    };
+                }
+                
+                // 旧URLパターン（後方互換性）
+                const oldPattern = /\/business\/([^\/]+)\/ava\/([^\/?#]+)/;
+                const oldMatch = url.match(oldPattern);
+                
+                if (oldMatch && oldMatch.length >= 3) {
+                    return {
+                        pattern: 'old',
+                        businessId: oldMatch[1],
+                        domainAssistantId: oldMatch[2]
+                    };
+                }
+                
+                return null;
+            } catch (e) {
+                return null;
+            }
+        }
+        
+        // Test cases
+        const testCases = [
+            {
+                name: '新形式URL（例1）',
+                url: 'https://business.firework.com/business/g201J5/ava/assistants/Nv7NLg/overview',
+                expected: { businessId: 'g201J5', domainAssistantId: 'Nv7NLg', pattern: 'new' }
+            },
+            {
+                name: '新形式URL（例2）',
+                url: 'https://business.firework.com/business/abc123/ava/assistants/xyz789/overview',
+                expected: { businessId: 'abc123', domainAssistantId: 'xyz789', pattern: 'new' }
+            },
+            {
+                name: '旧形式URL（例1）',
+                url: 'https://business.firework.com/business/g201J5/ava/Nv7NLg/overview',
+                expected: { businessId: 'g201J5', domainAssistantId: 'Nv7NLg', pattern: 'old' }
+            },
+            {
+                name: '旧形式URL（例2）',
+                url: 'https://business.firework.com/business/test123/ava/e5xrbg',
+                expected: { businessId: 'test123', domainAssistantId: 'e5xrbg', pattern: 'old' }
+            },
+            {
+                name: '新形式URL（クエリパラメータ付き）',
+                url: 'https://business.firework.com/business/g201J5/ava/assistants/Nv7NLg/overview?tab=settings',
+                expected: { businessId: 'g201J5', domainAssistantId: 'Nv7NLg', pattern: 'new' }
+            },
+            {
+                name: '無効なURL',
+                url: 'https://business.firework.com/invalid/path',
+                expected: null
+            }
+        ];
+        
+        // Run tests
+        const resultsDiv = document.getElementById('results');
+        let passCount = 0;
+        let failCount = 0;
+        
+        testCases.forEach((test, index) => {
+            const result = extractIdsFromAifaqUrl(test.url);
+            const passed = JSON.stringify(result) === JSON.stringify(test.expected);
+            
+            if (passed) passCount++;
+            else failCount++;
+            
+            const testDiv = document.createElement('div');
+            testDiv.className = `test ${passed ? 'success' : 'fail'}`;
+            testDiv.innerHTML = `
+                <h3>${passed ? '✅' : '❌'} Test ${index + 1}: ${test.name}</h3>
+                <p><strong>URL:</strong> <span class="url">${test.url}</span></p>
+                <p><strong>期待値:</strong> ${JSON.stringify(test.expected)}</p>
+                <p><strong>実際の結果:</strong> ${JSON.stringify(result)}</p>
+                <div class="result">${passed ? '合格 ✓' : '不合格 ✗'}</div>
+            `;
+            resultsDiv.appendChild(testDiv);
+        });
+        
+        // Summary
+        const summaryDiv = document.createElement('div');
+        summaryDiv.style.marginTop = '30px';
+        summaryDiv.style.padding = '20px';
+        summaryDiv.style.backgroundColor = '#f8f9fa';
+        summaryDiv.style.borderRadius = '5px';
+        summaryDiv.innerHTML = `
+            <h2>📊 Test Summary</h2>
+            <p><strong>Total Tests:</strong> ${testCases.length}</p>
+            <p style="color: green;"><strong>Passed:</strong> ${passCount}</p>
+            <p style="color: red;"><strong>Failed:</strong> ${failCount}</p>
+            <p><strong>Success Rate:</strong> ${(passCount / testCases.length * 100).toFixed(1)}%</p>
+        `;
+        resultsDiv.appendChild(summaryDiv);
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+Server is running on http://0.0.0.0:3000
+Access the application at http://localhost:3000
+📝 Processing manual HTML input (length: 75895 chars)
+🌐 Base URL provided: https://web.hh-online.jp/hankyu-beauty/goods/index.html?ggcd=B1750090
+🔗 Added <base> tag: https://web.hh-online.jp/
+🔒 Added permissive CSP meta tag
+🔧 Removing A/B testing scripts and forced visibility...
+  ❌ Removed problematic inline script (contains tracking/XHR/iframe)
+  ❌ Removed problematic inline script (contains tracking/XHR/iframe)
+  ❌ Removed problematic inline script (contains tracking/XHR/iframe)
+✅ Added force-visible CSS override
+📱 Adding mobile optimization...
+✅ Updated viewport meta tag
+✅ Added mobile responsive CSS
+🎨 Extracting colors from website...
+🎨 Found 2 colors with minimum usage threshold
+✅ Added black color as fallback option
+✅ Extracted top 3 colors: [
+  { color: 'rgb(251, 32, 33)', count: 6, hex: '#fb2021' },
+  { color: 'rgb(44, 84, 175)', count: 3, hex: '#2c54af' },
+  { color: 'rgb(0, 0, 0)', count: 0, hex: '#000000' }
+]
+💾 Stored preview HTML with ID: 22eec3edb55385e449675baeeef22659
+Proxying 7 images
+📺 Serving preview: 22eec3edb55385e449675baeeef22659
+🗑️  Cleaned up preview HTML: 22eec3edb55385e449675baeeef22659

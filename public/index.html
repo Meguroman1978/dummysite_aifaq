@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ウェブサイト複写＆スクリプト埋め込みツール</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="translations.js"></script>
 </head>
 <body>
     <div class="container">
@@ -16,20 +17,57 @@
                     実在するウェブサイトのURLを入力して、そのサイトを複写し、<br>
                     好きな位置にFirework AIFAQスクリプトを埋め込むことができます。
                 </p>
-                
-                <div class="warning">
-                    ⚠️ <strong>注意:</strong> 自分が所有するサイトまたは許可を得たサイトでのみご使用ください。
-                </div>
 
                 <form id="website-form">
+                    <!-- 言語設定 -->
+                    <div class="form-group language-selector">
+                        <label for="language-select">🌍 Language Settings</label>
+                        <select id="language-select">
+                            <option value="ja" selected>Japanese</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+
                     <!-- タブシステム -->
                     <div class="input-tabs">
-                        <button type="button" class="tab-btn active" data-tab="url-input">🌐 URL入力</button>
-                        <button type="button" class="tab-btn" data-tab="manual-input">📝 ソースコード入力</button>
+                        <button type="button" class="tab-btn active" data-tab="url-input" data-lang-ja="🌐 URL入力" data-lang-en="🌐 URL Input">🌐 URL入力</button>
+                        <button type="button" class="tab-btn" data-tab="manual-input" data-lang-ja="📝 ソースコード入力" data-lang-en="📝 Source Code Input">📝 ソースコード入力</button>
                     </div>
 
                     <!-- URL入力タブ -->
                     <div id="url-input-tab" class="tab-content active">
+                        <!-- プロダクト選択 -->
+                        <div class="form-group product-selection-group">
+                            <label>🎯 <span data-i18n="productSelection">プロダクト選択</span></label>
+                            <small style="display: block; margin-bottom: 10px;" data-i18n="productSelectionHelp">埋め込みたいプロダクトを選択してください（複数選択可）</small>
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-aifaq" value="aifaq" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="aifaqAssistant">AIFAQ Assistant</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-storyblock" value="storyblock" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="storyBlock">ストーリーブロック</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-carousel" value="carousel" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="carousel">カルーセル</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-circlestories" value="circlestories" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="circleStories">サークルストーリーズ</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-floatingplayer" value="floatingplayer" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="floatingPlayer">フローティングプレーヤー</span>
+                                </label>
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="product-horizontalplayer" value="horizontalplayer" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span data-i18n="horizontalPlayer">ホリゾンタルプレーヤー</span>
+                                </label>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label for="website-url">📍 ウェブサイトURL</label>
                             <input 
@@ -38,6 +76,16 @@
                                 placeholder="https://example.com"
                             >
                             <small>複写したいウェブサイトのURLを入力してください</small>
+                        </div>
+                        
+                        <!-- Puppeteerオプション -->
+                        <div class="form-group" style="background: #e3f2fd; padding: 12px; border-radius: 6px; border-left: 4px solid #2196f3;">
+                            <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal; margin: 0;">
+                                <input type="checkbox" id="use-puppeteer" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                <span style="flex: 1;">
+                                    <strong data-i18n="puppeteerMode">⚡ アクセス強化モード</strong>
+                                </span>
+                            </label>
                         </div>
                     </div>
 
@@ -52,50 +100,157 @@
                             ></textarea>
                             <small>💡 <strong>取得方法:</strong> 複写したいサイトで右クリック → 「ページのソースを表示」→ すべてコピー → ここに貼り付け</small>
                         </div>
-                        <div class="form-group">
-                            <label for="manual-base-url">🌐 ベースURL（オプション）</label>
+                        <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 6px; border: 2px solid #ffc107;">
+                            <label for="manual-base-url" style="font-weight: bold; color: #856404;">
+                                <span data-i18n="baseUrlLabel">🌐 ベースURL</span> 
+                                <span style="color: #d32f2f; font-size: 14px;" data-i18n="baseUrlRecommended">（強く推奨）</span>
+                            </label>
                             <input 
                                 type="url" 
                                 id="manual-base-url" 
-                                placeholder="https://example.com"
+                                data-i18n-placeholder="baseUrlPlaceholder"
+                                placeholder="例: https://www.kakuyasu.co.jp"
+                                style="border: 2px solid #ffc107;"
                             >
-                            <small>相対URLを絶対URLに変換するためのベースURL（省略可）</small>
+                            <small id="base-url-help" style="display: block; margin-top: 8px; color: #856404; line-height: 1.5;">
+                                <strong data-i18n="baseUrlImportance">⚠️ 重要:</strong> <span data-i18n="baseUrlHelp">HTMLソースコードをコピーした元のサイトのURLを入力してください。</span><br>
+                                <span data-i18n="baseUrlImportance">これにより、画像・CSS・JavaScriptなどのリソースが正しく読み込まれます。</span><br>
+                                <strong data-i18n="baseUrlWarning">入力しない場合、プレビュー画面が真っ白になる可能性があります。</strong>
+                            </small>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="aifaq-url">🔗 AIFAQ URL</label>
-                        <input 
-                            type="url" 
-                            id="aifaq-url" 
-                            placeholder="https://business.firework.com/business/g201J5/ava/e5xrbg" 
-                            required
-                        >
-                        <small>FreshworksのAIFAQ URLを入力してください（business_idとdomain_assistant_idが自動抽出されます）</small>
+                    <!-- AIFAQ Assistant 設定グループ -->
+                    <div id="aifaq-settings-group">
+                        <div class="form-group">
+                            <label for="aifaq-url">🔗 AIFAQ Assistant Setting Page URL</label>
+                            <input 
+                                type="url" 
+                                id="aifaq-url" 
+                                placeholder="https://business.firework.com/business/g201J5/ava/assistants/Nv7NLg/overview"
+                            >
+                            <small>FireworkのAIFAQ URLを入力してください（business_idとdomain_assistant_idが自動抽出されます）<br>
+                            ✅ 新形式: .../business/{id}/ava/assistants/{id}/... | 旧形式: .../business/{id}/ava/{id}/...</small>
+                        </div>
+
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label for="business-id">🏢 Business ID</label>
+                                <input 
+                                    type="text" 
+                                    id="business-id" 
+                                    placeholder="自動入力" 
+                                    readonly
+                                >
+                                <small>自動抽出されます</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="domain-assistant-id">🔑 Domain Assistant ID</label>
+                                <input 
+                                    type="text" 
+                                    id="domain-assistant-id" 
+                                    placeholder="自動入力" 
+                                    readonly
+                                >
+                                <small>自動抽出されます</small>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="form-group-row">
+                    <!-- Story Block 設定グループ -->
+                    <div id="storyblock-settings-group" style="display: none;">
                         <div class="form-group">
-                            <label for="business-id">🏢 Business ID</label>
+                            <label for="channel-name">📺 Channel Name</label>
                             <input 
                                 type="text" 
-                                id="business-id" 
-                                placeholder="自動入力" 
-                                readonly
+                                id="channel-name" 
+                                placeholder="チャンネル名を入力"
                             >
-                            <small>自動抽出されます</small>
+                            <small>Firework Story BlockのChannel Nameを入力してください</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="domain-assistant-id">🔑 Domain Assistant ID</label>
+                            <label for="playlist-name">📝 Playlist ID</label>
                             <input 
                                 type="text" 
-                                id="domain-assistant-id" 
-                                placeholder="自動入力" 
-                                readonly
+                                id="playlist-name" 
+                                placeholder="プレイリストIDを入力"
                             >
-                            <small>自動抽出されます</small>
+                            <small>Firework Story BlockのPlaylist IDを入力してください</small>
                         </div>
+                    </div>
+
+                    <!-- 共有設定（オプション） -->
+                    <div class="settings-section">
+                        <h3 style="font-size: 18px; margin-bottom: 15px; color: #2d3748;">⚙️ 共有設定（オプション）</h3>
+                        <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+                            HTMLを他の人と共有する際の設定です。後からでも設定できます。
+                        </p>
+
+                        <!-- Slack設定 -->
+                        <details class="settings-details">
+                            <summary style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">
+                                <span data-i18n="slackSharingSettings">💬 Slack共有設定</span>
+                            </summary>
+                            <div style="padding: 15px; background: white; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 15px;">
+                                <div class="form-group">
+                                    <label for="default-slack-webhook">Slack Webhook URL</label>
+                                    <input 
+                                        type="url" 
+                                        id="default-slack-webhook" 
+                                        placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+                                    >
+                                    <small data-i18n="slackWebhookSmallHelp">Slackチャンネルに通知するためのWebhook URL（省略可）</small>
+                                </div>
+                                
+                                <!-- Slack Webhook設定ガイド -->
+                                <div class="help-box" style="margin-top: 15px; padding: 15px; background: #f3e5f5; border-left: 4px solid #9c27b0; border-radius: 4px;">
+                                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #6a1b9a;" data-i18n="slackSetupMethodTitle">📚 Slack Webhookの設定方法</h4>
+                                    <p style="margin: 0 0 10px 0; font-size: 13px; color: #4a148c;">
+                                        <strong data-i18n="slackSetupPurpose">目的:</strong> <span data-i18n="slackSetupPurposeText">生成したHTMLファイルの公開URLをSlackチャンネルに自動送信できるようになります。</span>
+                                    </p>
+                                    
+                                    <ol style="margin: 10px 0; padding-left: 20px; font-size: 13px; color: #4a148c;">
+                                        <li style="margin-bottom: 8px;">
+                                            <strong data-i18n="slackCreateApp">Slackアプリを作成</strong><br>
+                                            <a href="https://api.slack.com/apps" target="_blank" style="color: #667eea; text-decoration: underline;">
+                                                https://api.slack.com/apps
+                                            </a> <span data-i18n="slackCreateAppDesc">にアクセスし、「Create New App」をクリック</span>
+                                        </li>
+                                        <li style="margin-bottom: 8px;">
+                                            <strong data-i18n="slackSelectWorkspace">アプリ名とワークスペースを選択</strong><br>
+                                            <span data-i18n="slackSelectWorkspaceDesc">アプリ名（例: HTML共有Bot）を入力し、使用するワークスペースを選択</span>
+                                        </li>
+                                        <li style="margin-bottom: 8px;">
+                                            <strong data-i18n="slackEnableWebhooks">Incoming Webhooksを有効化</strong><br>
+                                            <span data-i18n="slackEnableWebhooksDesc">左メニューから「Incoming Webhooks」を選択 → 「Activate Incoming Webhooks」をONに切り替え</span>
+                                        </li>
+                                        <li style="margin-bottom: 8px;">
+                                            <strong data-i18n="slackAddWebhookUrl">Webhook URLを追加</strong><br>
+                                            <span data-i18n="slackAddWebhookUrlDesc">「Add New Webhook to Workspace」をクリック → 送信先チャンネルを選択 → 「許可する」</span>
+                                        </li>
+                                        <li style="margin-bottom: 8px;">
+                                            <strong data-i18n="slackCopyUrl">URLをコピー</strong><br>
+                                            <span data-i18n="slackCopyUrlDesc">生成されたWebhook URL（https://hooks.slack.com/services/...）をコピーして、上の入力欄に貼り付け</span>
+                                        </li>
+                                    </ol>
+                                    
+                                    <p id="slack-official-doc-link" style="margin: 10px 0 0 0; font-size: 12px; color: #6a1b9a;">
+                                        📖 <span data-i18n="slackDetailsLink">詳しい手順:</span>
+                                        <a href="https://docs.slack.dev/tools/java-slack-sdk/ja-jp/guides/incoming-webhooks/" target="_blank" style="color: #667eea; text-decoration: underline;">
+                                            <span data-i18n="slackOfficialDoc">Slack公式ドキュメント（日本語）</span>
+                                        </a>
+                                    </p>
+                                </div>
+                                
+                                <div class="info-box" style="margin-top: 10px; padding: 10px; background: #e3f2fd; border-left: 4px solid #2196f3;">
+                                    <p style="margin: 0; font-size: 13px; color: #1565c0;">
+                                        💡 <strong data-i18n="slackNote">使い方:</strong> <span data-i18n="slackNoteText">スクリプト埋め込み完了後、ここで設定したSlackチャンネルにHTMLの公開URLが自動送信されます。</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </details>
                     </div>
 
                     <button type="submit" class="btn btn-primary" id="fetch-btn">
@@ -119,7 +274,32 @@
                     <h2>スクリプト埋め込み位置を選択</h2>
                 </div>
                 <div class="toolbar-right">
-                    <button id="download-btn" class="btn btn-success">💾 HTMLをダウンロード</button>
+                    <button id="delete-mode-btn" class="btn btn-warning" style="margin-right: 8px; font-size: 13px; padding: 8px 12px; white-space: nowrap;">🗑️ 要素削除モード</button>
+                    <button id="cancel-delete-btn" class="btn btn-secondary" style="margin-right: 8px; display: none; font-size: 13px; padding: 8px 12px; white-space: nowrap;">❌ 削除モード終了</button>
+                    <button id="cancel-embed-btn" class="btn btn-secondary" style="margin-right: 8px; display: none; font-size: 13px; padding: 8px 12px; white-space: nowrap;">🔄 スクリプト埋め込みをキャンセル</button>
+                    <button id="download-btn" class="btn btn-success" style="font-size: 13px; padding: 8px 12px; white-space: nowrap;">💾 HTMLをダウンロード</button>
+                    <button id="send-to-slack-btn" class="btn btn-primary" style="margin-left: 8px; font-size: 13px; padding: 8px 12px; white-space: nowrap;">📤 HTMLをSlackへ送信</button>
+                </div>
+            </div>
+
+            <!-- Slack送信モーダル -->
+            <div id="slack-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+                <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                    <h3 style="margin-top: 0; color: #2d3748;">📤 HTMLをSlackへ送信</h3>
+                    <div class="form-group">
+                        <label for="slack-webhook-input">Slack Webhook URL</label>
+                        <input 
+                            type="url" 
+                            id="slack-webhook-input" 
+                            placeholder="https://hooks.slack.com/services/..."
+                            style="width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 14px;"
+                        >
+                        <small style="display: block; margin-top: 8px; color: #666;">Slack Webhook URLを入力してください</small>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+                        <button id="slack-modal-cancel" class="btn btn-secondary">キャンセル</button>
+                        <button id="slack-modal-send" class="btn btn-primary">送信</button>
+                    </div>
                 </div>
             </div>
 
@@ -127,12 +307,44 @@
                 <p>
                     <strong>📌 使い方:</strong>
                     スクリプトを埋め込みたい位置をクリックしてください。
-                    クリックした場所にFirework AIFAQウィジェットが埋め込まれます。
+                    クリックした場所にFirework ウィジェットが埋め込まれます。
                 </p>
             </div>
 
+            <!-- 色選択パネル -->
+            <div id="color-picker-section" class="color-picker-panel" style="display: none;">
+                <h3>🎨 このウェブサイトで使われている色（AIFAQボタン配色用の参考情報）</h3>
+                <p class="color-picker-desc">使用頻度が高い順に表示されています。色をクリックすると色番号をコピーできます：</p>
+                <div class="color-picker-container">
+                    <div id="color-options" class="color-options">
+                        <!-- 色見本がJavaScriptで動的に追加されます -->
+                    </div>
+                    <div class="color-code-display">
+                        <label for="selected-color-code">選択した色番号:</label>
+                        <input type="text" id="selected-color-code" readonly placeholder="色を選択してください" />
+                        <button id="copy-color-btn" class="btn-copy" style="display: none;">📋 コピー</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- プロダクト選択（両方選択時のみ表示） -->
+            <div id="preview-product-selection" class="color-picker-panel" style="display: none;">
+                <h3>🎯 プロダクト選択</h3>
+                <p style="color: #666; margin-bottom: 15px;">埋め込むプロダクトを選択してください：</p>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                        <input type="radio" name="preview-product" id="preview-product-aifaq" value="aifaq" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                        <span>AIFAQ Assistant</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal;">
+                        <input type="radio" name="preview-product" id="preview-product-storyblock" value="storyblock" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                        <span>Story Block</span>
+                    </label>
+                </div>
+            </div>
+
             <div class="preview-container">
-                <iframe id="website-preview" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
+                <iframe id="website-preview" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" referrerpolicy="no-referrer"></iframe>
             </div>
         </div>
 
@@ -148,14 +360,62 @@
                 </div>
 
                 <div class="action-buttons">
-                    <button id="preview-result-btn" class="btn btn-primary">プレビューを見る</button>
-                    <button id="download-final-btn" class="btn btn-success">HTMLをダウンロード</button>
-                    <button id="start-over-btn" class="btn btn-secondary">最初からやり直す</button>
+                    <button id="preview-result-btn" class="btn btn-primary">👁️ プレビューを見る</button>
+                    <button id="download-final-btn" class="btn btn-success">💾 HTMLをダウンロード</button>
+                    <button id="start-over-btn" class="btn btn-secondary">🔄 最初からやり直す</button>
+                </div>
+
+                <!-- HTML共有オプション -->
+                <div class="share-section" style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">🔗 HTMLファイルを共有</h3>
+                    <p style="color: #666; font-size: 14px;">生成したHTMLを他の人と簡単に共有できます</p>
+                    
+                    <!-- クラウドホスティングオプション -->
+                    <div class="share-option" style="margin-bottom: 20px;">
+                        <button id="host-html-btn" class="btn btn-primary" style="width: 100%; margin-bottom: 10px;">
+                            ☁️ クラウドにホスティング（公開URLを取得）
+                        </button>
+                        <div id="hosted-url-container" style="display: none; margin-top: 10px;">
+                            <div style="background: white; padding: 15px; border-radius: 6px; border: 2px solid #28a745;">
+                                <p style="margin: 0 0 10px 0; font-weight: bold; color: #28a745;">✅ ホスティング成功！</p>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <input type="text" id="hosted-url" readonly style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                                    <button id="copy-url-btn" class="btn btn-secondary" style="white-space: nowrap;">📋 コピー</button>
+                                    <button id="show-qr-btn" class="btn btn-secondary" style="white-space: nowrap;">📱 QRコード</button>
+                                </div>
+                                <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+                                    ⏰ このURLは3日間有効です。誰でもアクセスできます。
+                                </p>
+                            </div>
+                            
+                            <!-- QRコード表示エリア -->
+                            <div id="qr-code-container" style="display: none; margin-top: 15px; text-align: center; background: white; padding: 20px; border-radius: 6px;">
+                                <p style="font-weight: bold; margin-bottom: 10px;">📱 モバイルでスキャン</p>
+                                <div id="qr-code" style="display: inline-block;"></div>
+                                <p style="margin-top: 10px; font-size: 12px; color: #666;">スマートフォンのカメラでQRコードをスキャンしてアクセス</p>
+                            </div>
+                            
+                            <!-- Slack自動通知セクション -->
+                            <div id="auto-slack-notification" style="display: none; margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 2px solid #0084ff;">
+                                <p style="margin: 0 0 10px 0; font-weight: bold; color: #0084ff;">📤 Slackへ通知を送信</p>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500; font-size: 13px;">メッセージ内容:</label>
+                                    <textarea id="slack-auto-message" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical;"></textarea>
+                                </div>
+                                <button id="send-slack-auto-btn" class="btn btn-primary" style="width: 100%;">
+                                    📤 メッセージを送信
+                                </button>
+                                <p id="slack-auto-status" style="margin: 10px 0 0 0; font-size: 12px; color: #666; display: none;"></p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- QRコード生成ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
